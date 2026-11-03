@@ -90,7 +90,17 @@ export default function PlaylistPage() {
         compact={compact}
         onRemove={
           editable
-            ? (track) => toastResult(removeTrack.mutateAsync({ playlistId: id, videoId: track.videoId }), `Removed from ${header.title}`, 'Couldn’t remove the song')
+            ? (track) => toastResult(removeTrack.mutateAsync({ playlistId: id, videoIds: [track.videoId] }), `Removed from ${header.title}`, 'Couldn’t remove the song')
+            : undefined
+        }
+        onRemoveMany={
+          editable
+            ? (picked) =>
+                toastResult(
+                  removeTrack.mutateAsync({ playlistId: id, videoIds: picked.map((t) => t.videoId) }),
+                  `Removed ${picked.length} songs from ${header.title}`,
+                  'Couldn’t remove those songs',
+                )
             : undefined
         }
         // Rows sorted or filtered aren't at their places in the playlist: dragging is for its own order.

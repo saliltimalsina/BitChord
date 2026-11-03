@@ -361,11 +361,11 @@ export function useEditPlaylist() {
 /** "Remove from Playlist" on a row of one of the user's playlists. */
 export function useRemoveFromPlaylist() {
   return useMutation({
-    mutationFn: ({ playlistId, videoId }: { playlistId: string; videoId: string }) => removeFromPlaylist(playlistId, videoId),
+    mutationFn: ({ playlistId, videoIds }: { playlistId: string; videoIds: string[] }) => removeFromPlaylist(playlistId, videoIds),
     // Gone from the screen at once; YouTube is asked again once it has caught up.
-    onSuccess: (_data, { playlistId, videoId }) => {
+    onSuccess: (_data, { playlistId, videoIds }) => {
       for (const key of playlistKeys(playlistId)) {
-        queryClient.setQueryData<InfiniteData<PlaylistChunk>>(key, (data) => data && withoutTrack(data, videoId));
+        queryClient.setQueryData<InfiniteData<PlaylistChunk>>(key, (data) => data && videoIds.reduce((rows, id) => withoutTrack(rows, id), data));
       }
       refreshPlaylistSoon(playlistId);
     },

@@ -348,28 +348,33 @@ export function continuationToken(node: unknown): string | null {
 }
 
 /**
- * Takes [videoId] out of one of the user's playlists. Removing needs the row's
- * own id, which the parsed pages don't carry: it's read from YouTube's
- * answers, page by page, until the song turns up.
+ * Takes [videoIds] (one song, or several picked) out of one of the user's
+ * playlists, in one request: several edits at once, YouTube refuses some.
+ * Removing needs each row's own id, which the parsed pages don't carry: they
+ * are read from YouTube's answers, page by page, until every song turns up.
  */
-export async function removeFromPlaylist(playlistId: string, videoId: string): Promise<void> {
+export async function removeFromPlaylist(playlistId: string, videoIds: string | readonly string[]): Promise<void> {
+  const wanted = typeof videoIds === 'string' ? [videoIds] : [...videoIds];
   const yt = await getSignedInnertube();
+  const found: { setVideoId: string; videoId: string }[] = [];
   let response = await yt.actions.execute('/browse', { browseId: `VL${bare(playlistId)}`, client: 'YTMUSIC' });
-  for (let page = 0; page < 50; page++) {
-    const row = playlistItemIds(response.data).find((r) => r.videoId === videoId);
-    if (row) {
-      await yt.actions.execute('/browse/edit_playlist', {
-        playlistId: bare(playlistId),
-        actions: [{ action: 'ACTION_REMOVE_VIDEO', setVideoId: row.setVideoId, removedVideoId: videoId }],
-        client: 'YTMUSIC',
-      });
-      return;
+  for (let page = 0; page < 50 && found.length < wanted.length; page++) {
+    for (const row of playlistItemIds(response.data)) {
+      // One row per song asked for: a song in the playlist twice, picked once, loses one row.
+      const asked = wanted.filter((id) => id === row.videoId).length;
+      if (asked > found.filter((f) => f.videoId === row.videoId).length) found.push(row);
     }
+    if (found.length >= wanted.length) break;
     const token = continuationToken(response.data);
     if (!token) break;
     response = await yt.actions.execute('/browse', { continuation: token, client: 'YTMUSIC' });
   }
-  throw new Error('That song is no longer in this playlist');
+  if (found.length < wanted.length) throw new Error(wanted.length > 1 ? 'Some of those songs are no longer in this playlist' : 'That song is no longer in this playlist');
+  await yt.actions.execute('/browse/edit_playlist', {
+    playlistId: bare(playlistId),
+    actions: found.map((row) => ({ action: 'ACTION_REMOVE_VIDEO', setVideoId: row.setVideoId, removedVideoId: row.videoId })),
+    client: 'YTMUSIC',
+  });
 }
 
 /**

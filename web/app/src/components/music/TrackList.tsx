@@ -33,6 +33,8 @@ interface TrackListProps {
   source?: ListContext['source'];
   /** The user's own playlist: each row's menu offers "Remove from Playlist". */
   onRemove?: (track: Track) => void;
+  /** And for several picked songs at once, in one request. */
+  onRemoveMany?: (tracks: Track[]) => void;
   /** The user's own playlist: rows can be dragged up and down; called with the old and new position. */
   onMove?: (from: number, to: number) => void;
   /** Playlists only: compact rows, numbered, with no artwork. */
@@ -314,7 +316,7 @@ function Header() {
  * hover fill, the number (or artwork) turning into a play button. Long lists
  * are virtualized against the page's scroll container (prompt §3).
  */
-export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, onNearEnd, source, onRemove, onMove, compact }: TrackListProps) {
+export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, onNearEnd, source, onRemove, onRemoveMany, onMove, compact }: TrackListProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragProps = (i: number): RowProps['drag'] =>
     onMove && {
@@ -381,7 +383,7 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
     },
     many: selection.rows.has(i) ? pickedTracks : null,
     // Removing shifts the rows under the picked positions: let go first.
-    onRemoveMany: onRemove && ((picked: Track[]) => (setSelection(NO_SELECTION), picked.forEach(onRemove))),
+    onRemoveMany: onRemoveMany && ((picked: Track[]) => (setSelection(NO_SELECTION), onRemoveMany(picked))),
   });
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   useEffect(() => setScrollElement(document.getElementById('scrollable-page')), []);

@@ -4,6 +4,7 @@ import { PrefetchLink } from '@/components/PrefetchLink';
 import { PauseIcon, PlayIcon } from '@/components/icons/Transport';
 import type { ArtistRef, Track } from '@/data/music/types';
 import { usePlayer } from '@/state/player';
+import { SONG_DRAG_TYPE, useSongDrag } from '@/state/songDrag';
 import { Artwork } from './Artwork';
 import { ExplicitBadge } from './ExplicitBadge';
 import { albumHref, artistHref, formatDuration } from './links';
@@ -102,6 +103,17 @@ interface RowProps {
   many: Track[] | null;
 }
 
+/** The drag image: a pill naming what's dragged, instead of a ghost of the whole row. */
+function setDragLabel(transfer: DataTransfer, label: string) {
+  const pill = document.createElement('div');
+  pill.textContent = label;
+  pill.style.cssText =
+    'position:fixed;top:-100px;left:0;padding:6px 12px;border-radius:999px;background:var(--keyColor);color:#fff;font:600 13px/1.2 system-ui,sans-serif;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis';
+  document.body.append(pill);
+  transfer.setDragImage(pill, 16, 14);
+  setTimeout(() => pill.remove());
+}
+
 function Row({ track, variant, position, fallbackArtwork, onPlayRow, selected, onPick, onContext, many }: RowProps) {
   const current = usePlayer((s) => s.nowPlaying?.videoId === track.videoId);
   const playing = usePlayer((s) => s.nowPlaying?.videoId === track.videoId && (s.status === 'playing' || s.status === 'buffering'));
@@ -120,6 +132,18 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, selected, o
       data-unavailable={unavailable}
       title={unavailable === 'matching' ? 'Looking for this on YouTube Music…' : unavailable === 'missing' ? 'Not found on YouTube Music' : undefined}
       onDoubleClick={onPlay}
+      // Drag a song, or the picked ones, onto a playlist in the sidebar.
+      draggable={!unavailable}
+      onDragStart={(event) => {
+        const songs = many ?? [track];
+        const drag = { videoIds: songs.map((s) => s.videoId), label: songs.length > 1 ? `${songs.length} songs` : track.title };
+        event.dataTransfer.effectAllowed = 'copy';
+        event.dataTransfer.setData(SONG_DRAG_TYPE, JSON.stringify(drag.videoIds));
+        event.dataTransfer.setData('text/plain', drag.label);
+        setDragLabel(event.dataTransfer, drag.label);
+        useSongDrag.getState().start(drag);
+      }}
+      onDragEnd={() => useSongDrag.getState().end()}
       onClick={(event) => {
         if (!(event.target as Element).closest('button, a, input')) onPick(event);
       }}

@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowUpRight, ListMusic, Settings } from 'lucide-react';
 import { MdOutlineExtension } from 'react-icons/md';
 import { PrefetchLink, PrefetchNavLink } from '@/components/PrefetchLink';
@@ -17,10 +18,13 @@ import {
 import { hrefFor } from '@/components/music/links';
 import { config } from '@/config';
 import { LIBRARY_SECTIONS, type LibrarySection } from '@/data/music/library';
-import { useLibraryPlaylists, useSignedIn } from '@/data/music/queries';
+import { useAddToPlaylist, useLibraryPlaylists, usePlaylistOptions, useSignedIn } from '@/data/music/queries';
+import type { MusicItem } from '@/data/music/types';
 import { useSpotifyPlaylists } from '@/data/spotify/queries';
 import { useExtensionUpdate } from '@/extension/useExtensionUpdate';
 import { useSpotifySignedIn } from '@/extension/useSpotifyAuth';
+import { acceptsDrop, bareId, SONG_DRAG_TYPE, useSongDrag } from '@/state/songDrag';
+import { toastResult } from '@/state/toasts';
 import { useUi } from '@/state/ui';
 import { AccountButton } from './AccountButton';
 
@@ -75,9 +79,66 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate: () => vo
   );
 }
 
+/**
+ * A playlist in the sidebar. While songs are dragged it lights up if they
+ * can go into it, and dropping them there adds them all.
+ */
+function PlaylistNavItem({
+  playlist,
+  addable,
+  onNavigate,
+}: {
+  playlist: MusicItem;
+  addable: readonly { playlistId: string }[] | undefined;
+  onNavigate: () => void;
+}) {
+  const drag = useSongDrag((s) => s.current);
+  const add = useAddToPlaylist();
+  const [over, setOver] = useState(false);
+  const takes = drag !== null && acceptsDrop(playlist.id, addable);
+  return (
+    <li
+      data-drop-target={takes || undefined}
+      data-drop-over={(takes && over) || undefined}
+      className="rounded-nav data-drop-target:outline-1 data-drop-target:outline-key/50 data-drop-target:-outline-offset-1 data-drop-over:bg-key/25"
+      onDragEnter={(event) => takes && event.dataTransfer.types.includes(SONG_DRAG_TYPE) && setOver(true)}
+      onDragOver={(event) => {
+        if (!takes || !event.dataTransfer.types.includes(SONG_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }}
+      onDragLeave={(event) => !event.currentTarget.contains(event.relatedTarget as Node | null) && setOver(false)}
+      onDrop={(event) => {
+        setOver(false);
+        const raw = event.dataTransfer.getData(SONG_DRAG_TYPE);
+        if (!takes || !raw) return;
+        event.preventDefault();
+        const videoIds = JSON.parse(raw) as string[];
+        const label = drag?.label ?? `${videoIds.length} songs`;
+        toastResult(
+          add.mutateAsync({ playlistId: bareId(playlist.id), videoIds }),
+          { message: `Added ${label} to ${playlist.title}`, action: { label: 'View', href: hrefFor(playlist) ?? '/library/playlists' } },
+          `Couldn’t add to ${playlist.title}`,
+        );
+        useSongDrag.getState().end();
+      }}
+    >
+      <PrefetchNavLink to={hrefFor(playlist) ?? '/library/playlists'} className={item} onClick={onNavigate}>
+        <span className={icon}>
+          <ListMusic size={17} strokeWidth={1.8} />
+        </span>
+        <span className={navLabel}>{playlist.title}</span>
+      </PrefetchNavLink>
+    </li>
+  );
+}
+
 /** Library and Playlists (report §1), once YouTube requests are made as the user. */
 function LibraryNav({ onNavigate }: { onNavigate: () => void }) {
   const playlists = useLibraryPlaylists();
+  // While songs are dragged: the playlists they can go into (yours), asked about the first of them.
+  const dragged = useSongDrag((s) => s.current?.videoIds[0] ?? '');
+  const addable = usePlaylistOptions(dragged, dragged !== '');
   return (
     <>
       <h2 className={sectionHeader}>Library</h2>
@@ -91,14 +152,7 @@ function LibraryNav({ onNavigate }: { onNavigate: () => void }) {
           </PrefetchNavLink>
         </li>
         {playlists.data?.map((playlist) => (
-          <li key={playlist.id}>
-            <PrefetchNavLink to={hrefFor(playlist) ?? '/library/playlists'} className={item} onClick={onNavigate}>
-              <span className={icon}>
-                <ListMusic size={17} strokeWidth={1.8} />
-              </span>
-              <span className={navLabel}>{playlist.title}</span>
-            </PrefetchNavLink>
-          </li>
+          <PlaylistNavItem key={playlist.id} playlist={playlist} addable={addable.data} onNavigate={onNavigate} />
         ))}
       </ul>
     </>

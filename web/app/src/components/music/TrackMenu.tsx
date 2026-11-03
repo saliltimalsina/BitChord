@@ -19,6 +19,11 @@ import { startRadio } from './play';
 import { toast, toastResult } from '@/state/toasts';
 import { filterPlaylists } from './playlistFilter';
 
+/** "a song" or "3 songs", for menus and toasts that act on a selection. */
+function songsLabel(count: number): string {
+  return count === 1 ? 'a song' : `${count} songs`;
+}
+
 const menuField =
   'h-8 w-full rounded-[7px] border-0 bg-quinary pe-2 type-body text-primary outline-none placeholder:text-tertiary focus:bg-quaternary';
 
@@ -26,8 +31,8 @@ const menuField =
  * Add to Playlist: a field to find one of the user's playlists by name, and
  * New Playlist, which names a new private playlist holding the song.
  */
-function PlaylistChoices({ videoId, onDone, onBack }: { videoId: string; onDone: () => void; onBack: () => void }) {
-  const options = usePlaylistOptions(videoId, true);
+function PlaylistChoices({ videoIds, onDone, onBack }: { videoIds: string[]; onDone: () => void; onBack: () => void }) {
+  const options = usePlaylistOptions(videoIds[0]!, true);
   const add = useAddToPlaylist();
   const create = useCreatePlaylist();
   const [query, setQuery] = useState('');
@@ -41,11 +46,11 @@ function PlaylistChoices({ videoId, onDone, onBack }: { videoId: string; onDone:
     const title = name.trim();
     if (!title || create.isPending) return;
     create.mutate(
-      { title, videoId },
+      { title, videoIds },
       {
         onSuccess: (playlistId) => {
           onDone();
-          toast(`Added to ${title}`, { action: { label: 'View', href: `/playlist/${encodeURIComponent(playlistId)}` } });
+          toast(videoIds.length > 1 ? `Added ${songsLabel(videoIds.length)} to ${title}` : `Added to ${title}`, { action: { label: 'View', href: `/playlist/${encodeURIComponent(playlistId)}` } });
         },
       },
     );
@@ -110,8 +115,8 @@ function PlaylistChoices({ videoId, onDone, onBack }: { videoId: string; onDone:
               e.preventDefault();
               const target = shown[0];
               toastResult(
-                add.mutateAsync({ playlistId: target.playlistId, videoId }),
-                { message: `Added to ${target.title}`, action: { label: 'View', href: `/playlist/${encodeURIComponent(target.playlistId)}` } },
+                add.mutateAsync({ playlistId: target.playlistId, videoIds }),
+                { message: videoIds.length > 1 ? `Added ${songsLabel(videoIds.length)} to ${target.title}` : `Added to ${target.title}`, action: { label: 'View', href: `/playlist/${encodeURIComponent(target.playlistId)}` } },
                 `Couldn’t add to ${target.title}`,
               );
               onDone();
@@ -149,8 +154,8 @@ function PlaylistChoices({ videoId, onDone, onBack }: { videoId: string; onDone:
           key={option.playlistId}
           onSelect={() => {
             toastResult(
-              add.mutateAsync({ playlistId: option.playlistId, videoId }),
-              { message: `Added to ${option.title}`, action: { label: 'View', href: `/playlist/${encodeURIComponent(option.playlistId)}` } },
+              add.mutateAsync({ playlistId: option.playlistId, videoIds }),
+              { message: videoIds.length > 1 ? `Added ${songsLabel(videoIds.length)} to ${option.title}` : `Added to ${option.title}`, action: { label: 'View', href: `/playlist/${encodeURIComponent(option.playlistId)}` } },
               `Couldn’t add to ${option.title}`,
             );
             onDone();
@@ -232,12 +237,72 @@ function GoToAlbum({ track, onGo }: { track: Track; onGo: (href: string) => void
   );
 }
 
+/** The menu for several picked songs: queue them, or add them all to a playlist. */
+function ManyTracksItems({ tracks, onClose, onRemove }: { tracks: Track[]; onClose: () => void; onRemove?: (() => void) | undefined }) {
+  const [choosing, setChoosing] = useState(false);
+  const signedIn = useSignedIn();
+  if (choosing) return <PlaylistChoices videoIds={tracks.map((t) => t.videoId)} onDone={onClose} onBack={() => setChoosing(false)} />;
+  const { playNext, addToQueue } = usePlayer.getState();
+  return (
+    <>
+      <MenuHeader>{songsLabel(tracks.length)}</MenuHeader>
+      <MenuItem icon={<ListStart size={15} />} onSelect={() => (onClose(), playNext(tracks), toast(`Playing ${songsLabel(tracks.length)} next`))}>
+        Play Next
+      </MenuItem>
+      <MenuItem icon={<ListEnd size={15} />} onSelect={() => (onClose(), addToQueue(tracks), toast(`Added ${songsLabel(tracks.length)} to the queue`))}>
+        Add to Queue
+      </MenuItem>
+      {signedIn && (
+        <>
+          <MenuSeparator />
+          <MenuItem icon={<ListPlus size={15} />} trailing={<ChevronRight size={14} />} onSelect={() => setChoosing(true)}>
+            Add to Playlist
+          </MenuItem>
+        </>
+      )}
+      {onRemove && (
+        <>
+          <MenuSeparator />
+          <MenuItem destructive icon={<Trash2 size={15} />} onSelect={() => (onClose(), onRemove())}>
+            Remove from Playlist
+          </MenuItem>
+        </>
+      )}
+    </>
+  );
+}
+
+/**
+ * One song's menu, or the picked songs' menu when [many] holds more than one.
+ * [onRemove] is Remove from Playlist on the user's own playlist: for that
+ * song, or, given [onRemoveMany], for every picked one.
+ */
+function MenuFor({
+  track,
+  many,
+  onClose,
+  onRemove,
+  onRemoveMany,
+}: {
+  track: Track;
+  many?: Track[] | null | undefined;
+  onClose: () => void;
+  onRemove?: (() => void) | undefined;
+  onRemoveMany?: ((tracks: Track[]) => void) | undefined;
+}) {
+  return many && many.length > 1 ? (
+    <ManyTracksItems tracks={many} onClose={onClose} onRemove={onRemoveMany && (() => onRemoveMany(many))} />
+  ) : (
+    <TrackMenuItems track={track} onClose={onClose} onRemove={onRemove} />
+  );
+}
+
 function TrackMenuItems({ track, onClose, onRemove }: { track: Track; onClose: () => void; onRemove?: (() => void) | undefined }) {
   const [view, setView] = useState<'main' | 'playlists' | 'artists'>('main');
   const signedIn = useSignedIn();
   const navigate = useNavigate();
   if (view === 'playlists') {
-    return <PlaylistChoices videoId={track.videoId} onDone={onClose} onBack={() => setView('main')} />;
+    return <PlaylistChoices videoIds={[track.videoId]} onDone={onClose} onBack={() => setView('main')} />;
   }
   // Leaving the full-screen player too, or the page would open behind it.
   const go = (href: string) => {
@@ -306,15 +371,24 @@ function TrackMenuItems({ track, onClose, onRemove }: { track: Track; onClose: (
  */
 export function useTrackContextMenu(
   track: Track | null,
+  /**
+   * In a list where songs can be picked: called on the right-click, answering
+   * the songs the menu acts on (the picked ones, when this row is one of them).
+   */
+  onOpen?: () => Track[] | null,
   /** The user's own playlist: Remove from Playlist, as in the ⋯ menu. */
   onRemove?: (() => void) | undefined,
+  /** And for every picked song at once. */
+  onRemoveMany?: ((tracks: Track[]) => void) | undefined,
 ): { onContextMenu: ((event: MouseEvent) => void) | undefined; menu: ReactNode } {
   const [at, setAt] = useState<MenuPoint | null>(null);
+  const [many, setMany] = useState<Track[] | null>(null);
   const close = useCallback(() => setAt(null), []);
   return {
     onContextMenu: track
       ? (event) => {
           event.preventDefault();
+          setMany(onOpen?.() ?? null);
           setAt({ x: event.clientX, y: event.clientY });
         }
       : undefined,
@@ -327,8 +401,8 @@ export function useTrackContextMenu(
           onDoubleClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => (event.preventDefault(), event.stopPropagation())}
         >
-          <Menu anchor={at} onClose={close} label={track.title}>
-            <TrackMenuItems track={track} onClose={close} onRemove={onRemove} />
+          <Menu anchor={at} onClose={close} label={many && many.length > 1 ? songsLabel(many.length) : track.title}>
+            <MenuFor track={track} many={many} onClose={close} onRemove={onRemove} onRemoveMany={onRemoveMany} />
           </Menu>
         </div>
       ) : null,
@@ -346,10 +420,16 @@ export function TrackMenu({
   placement,
   onOpenChange,
   onRemove,
+  many,
+  onRemoveMany,
 }: {
   track: Track;
   /** On a row of the user's own playlist: offers "Remove from Playlist". */
   onRemove?: (() => void) | undefined;
+  /** The picked songs, when this row is one of several: the menu acts on them all. */
+  many?: Track[] | null;
+  /** Remove from Playlist for every picked song, on the user's own playlist. */
+  onRemoveMany?: ((tracks: Track[]) => void) | undefined;
   className?: string;
   /** Where the menu opens from the button; the player's sit at the bottom of the window. */
   placement?: MenuPlacement;
@@ -378,8 +458,8 @@ export function TrackMenu({
         <MoreHorizontal size={18} strokeWidth={2} />
       </button>
       {anchor && (
-        <Menu anchor={anchor} placement={placement} onClose={close} label={track.title}>
-          <TrackMenuItems track={track} onClose={close} onRemove={onRemove} />
+        <Menu anchor={anchor} placement={placement} onClose={close} label={many && many.length > 1 ? songsLabel(many.length) : track.title}>
+          <MenuFor track={track} many={many} onClose={close} onRemove={onRemove} onRemoveMany={onRemoveMany} />
         </Menu>
       )}
     </>

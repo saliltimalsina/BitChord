@@ -279,8 +279,8 @@ export function usePlaylistOptions(videoId: string, enabled: boolean) {
 /** A new private playlist holding [videoId]: Add to Playlist's "New Playlist". */
 export function useCreatePlaylist() {
   return useMutation({
-    mutationFn: ({ title, videoId }: { title: string; videoId: string }) => createPlaylist(title, [videoId]),
-    onSettled: (_data, _error, { videoId }) => {
+    mutationFn: ({ title, videoIds }: { title: string; videoIds: string[] }) => createPlaylist(title, videoIds),
+    onSettled: (_data, _error, { videoIds: [videoId] }) => {
       refreshLibrary();
       void queryClient.invalidateQueries({ queryKey: ['music', 'playlist-options', videoId] });
     },
@@ -289,7 +289,7 @@ export function useCreatePlaylist() {
 
 export function useAddToPlaylist() {
   return useMutation({
-    mutationFn: ({ playlistId, videoId }: { playlistId: string; videoId: string }) => addToPlaylist(playlistId, videoId),
+    mutationFn: ({ playlistId, videoIds }: { playlistId: string; videoIds: string[] }) => addToPlaylist(playlistId, videoIds),
     onSettled: (_data, _error, { playlistId }) => {
       void queryClient.invalidateQueries({ queryKey: ['music', 'playlist', playlistId] });
       void queryClient.invalidateQueries({ queryKey: ['music', 'playlist', `VL${playlistId.replace(/^VL/, '')}`] });

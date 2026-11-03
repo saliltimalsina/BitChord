@@ -4,6 +4,7 @@ import { PrefetchLink } from '@/components/PrefetchLink';
 import { PauseIcon, PlayIcon } from '@/components/icons/Transport';
 import type { ArtistRef, Track } from '@/data/music/types';
 import { usePlayer } from '@/state/player';
+import { SONG_DRAG_TYPE, useSongDrag } from '@/state/songDrag';
 import { Artwork } from './Artwork';
 import { ExplicitBadge } from './ExplicitBadge';
 import { albumHref, artistHref, formatDuration } from './links';
@@ -135,6 +136,17 @@ interface RowProps {
   onRemoveMany: ((tracks: Track[]) => void) | undefined;
 }
 
+/** The drag image: a pill naming what's dragged, instead of a ghost of the whole row. */
+function setDragLabel(transfer: DataTransfer, label: string) {
+  const pill = document.createElement('div');
+  pill.textContent = label;
+  pill.style.cssText =
+    'position:fixed;top:-100px;left:0;padding:6px 12px;border-radius:999px;background:var(--keyColor);color:#fff;font:600 13px/1.2 system-ui,sans-serif;white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis';
+  document.body.append(pill);
+  transfer.setDragImage(pill, 16, 14);
+  setTimeout(() => pill.remove());
+}
+
 function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, drag, compact, selected, onPick, onContext, many, onRemoveMany }: RowProps) {
   const artwork = variant === 'playlist' && !compact;
   const current = usePlayer((s) => s.nowPlaying?.videoId === track.videoId);
@@ -155,6 +167,23 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
       data-unavailable={unavailable}
       title={unavailable === 'matching' ? 'Looking for this on YouTube Music…' : unavailable === 'missing' ? 'Not found on YouTube Music' : undefined}
       onDoubleClick={onPlay}
+      // Drag a song, or the picked ones, onto a playlist in the sidebar; on
+      // the user's own playlist the same drag also reorders it.
+      draggable={!unavailable}
+      onDragStart={(event) => {
+        const songs = many ?? [track];
+        const carried = { videoIds: songs.map((s) => s.videoId), label: songs.length > 1 ? `${songs.length} songs` : track.title };
+        event.dataTransfer.effectAllowed = drag ? 'copyMove' : 'copy';
+        event.dataTransfer.setData(SONG_DRAG_TYPE, JSON.stringify(carried.videoIds));
+        event.dataTransfer.setData('text/plain', carried.label);
+        setDragLabel(event.dataTransfer, carried.label);
+        useSongDrag.getState().start(carried);
+        drag?.onStart();
+      }}
+      onDragEnd={() => {
+        useSongDrag.getState().end();
+        drag?.onEnd();
+      }}
       onClick={(event) => {
         if (!(event.target as Element).closest('button, a, input')) onPick(event);
       }}
@@ -162,12 +191,6 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
       data-dragging={drag?.dragging || undefined}
       data-drop={drag?.drop ?? undefined}
       {...(drag && {
-        draggable: true,
-        onDragStart: (e: React.DragEvent) => {
-          e.dataTransfer.effectAllowed = 'move';
-          e.dataTransfer.setData('text/plain', track.title);
-          drag.onStart();
-        },
         onDragOver: (e: React.DragEvent<HTMLDivElement>) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
@@ -178,7 +201,6 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
           e.preventDefault();
           drag.onDrop();
         },
-        onDragEnd: drag.onEnd,
       })}
     >
       {context.menu}

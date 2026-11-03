@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { ArrowUpRight, Command, ListMusic, Pin, Settings } from 'lucide-react';
 import { MdOutlineExtension } from 'react-icons/md';
 import { PrefetchLink, PrefetchNavLink } from '@/components/PrefetchLink';
@@ -19,13 +20,15 @@ import { usePinMenu } from '@/components/music/PinMenu';
 import { config } from '@/config';
 import { LIBRARY_SECTIONS, type LibrarySection } from '@/data/music/library';
 import { pinnedFirst } from '@/data/music/libraryView';
-import { useLibraryPlaylists, useSignedIn } from '@/data/music/queries';
+import { useAddToPlaylist, useLibraryPlaylists, usePlaylistOptions, useSignedIn } from '@/data/music/queries';
 import type { MusicItem } from '@/data/music/types';
 import { useSpotifyPlaylists } from '@/data/spotify/queries';
 import { useExtensionUpdate } from '@/extension/useExtensionUpdate';
 import { useSpotifySignedIn } from '@/extension/useSpotifyAuth';
 import { isMac } from '@/lib/platform';
 import { usePins } from '@/state/pins';
+import { acceptsDrop, bareId, SONG_DRAG_TYPE, useSongDrag } from '@/state/songDrag';
+import { toastResult } from '@/state/toasts';
 import { useUi } from '@/state/ui';
 import { AccountButton } from './AccountButton';
 
@@ -80,11 +83,55 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate: () => vo
   );
 }
 
-/** A playlist in the sidebar; right-click pins it to the top. */
-function PlaylistNavItem({ playlist, pinned, onNavigate }: { playlist: MusicItem; pinned: boolean; onNavigate: () => void }) {
+/**
+ * A playlist in the sidebar. While songs are dragged it lights up if they
+ * can go into it, and dropping them there adds them all. Right-click pins it
+ * to the top.
+ */
+function PlaylistNavItem({
+  playlist,
+  pinned,
+  addable,
+  onNavigate,
+}: {
+  playlist: MusicItem;
+  pinned: boolean;
+  addable: readonly { playlistId: string }[] | undefined;
+  onNavigate: () => void;
+}) {
   const pinMenu = usePinMenu(playlist);
+  const drag = useSongDrag((s) => s.current);
+  const add = useAddToPlaylist();
+  const [over, setOver] = useState(false);
+  const takes = drag !== null && acceptsDrop(playlist.id, addable);
   return (
-    <li onContextMenu={pinMenu.onContextMenu}>
+    <li
+      data-drop-target={takes || undefined}
+      data-drop-over={(takes && over) || undefined}
+      className="rounded-nav data-drop-target:outline-1 data-drop-target:outline-key/50 data-drop-target:-outline-offset-1 data-drop-over:bg-key/25"
+      onContextMenu={pinMenu.onContextMenu}
+      onDragEnter={(event) => takes && event.dataTransfer.types.includes(SONG_DRAG_TYPE) && setOver(true)}
+      onDragOver={(event) => {
+        if (!takes || !event.dataTransfer.types.includes(SONG_DRAG_TYPE)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+      }}
+      onDragLeave={(event) => !event.currentTarget.contains(event.relatedTarget as Node | null) && setOver(false)}
+      onDrop={(event) => {
+        setOver(false);
+        const raw = event.dataTransfer.getData(SONG_DRAG_TYPE);
+        if (!takes || !raw) return;
+        event.preventDefault();
+        const videoIds = JSON.parse(raw) as string[];
+        const label = drag?.label ?? `${videoIds.length} songs`;
+        toastResult(
+          add.mutateAsync({ playlistId: bareId(playlist.id), videoIds }),
+          { message: `Added ${label} to ${playlist.title}`, action: { label: 'View', href: hrefFor(playlist) ?? '/library/playlists' } },
+          `Couldn’t add to ${playlist.title}`,
+        );
+        useSongDrag.getState().end();
+      }}
+    >
       {pinMenu.menu}
       <PrefetchNavLink to={hrefFor(playlist) ?? '/library/playlists'} className={item} onClick={onNavigate}>
         <span className={icon}>
@@ -101,6 +148,9 @@ function PlaylistNavItem({ playlist, pinned, onNavigate }: { playlist: MusicItem
 function LibraryNav({ onNavigate }: { onNavigate: () => void }) {
   const playlists = useLibraryPlaylists();
   const pinned = usePins((state) => state.pinned);
+  // While songs are dragged: the playlists they can go into (yours), asked about the first of them.
+  const dragged = useSongDrag((s) => s.current?.videoIds[0] ?? '');
+  const addable = usePlaylistOptions(dragged, dragged !== '');
   return (
     <>
       <h2 className={sectionHeader}>Library</h2>
@@ -114,7 +164,7 @@ function LibraryNav({ onNavigate }: { onNavigate: () => void }) {
           </PrefetchNavLink>
         </li>
         {pinnedFirst(playlists.data ?? [], pinned).map((playlist) => (
-          <PlaylistNavItem key={playlist.id} playlist={playlist} pinned={pinned.includes(playlist.id)} onNavigate={onNavigate} />
+          <PlaylistNavItem key={playlist.id} playlist={playlist} pinned={pinned.includes(playlist.id)} addable={addable.data} onNavigate={onNavigate} />
         ))}
       </ul>
     </>

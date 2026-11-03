@@ -1,12 +1,15 @@
 import { Check } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import { pointPosition, type MenuPoint } from './menuPosition';
+
+export type { MenuPoint } from './menuPosition';
 
 export type MenuPlacement = 'above-start' | 'above-end' | 'below-end';
 
 interface MenuProps {
-  /** The element the menu opens from. */
-  anchor: HTMLElement;
+  /** The element the menu opens from, or the point a right-click opened it at. */
+  anchor: HTMLElement | MenuPoint;
   placement?: MenuPlacement;
   onClose: () => void;
   label: string;
@@ -25,9 +28,15 @@ export function Menu({ anchor, placement = 'below-end', onClose, label, matchWid
   const [position, setPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
   // Menus sit under modals; one opened from inside a modal (a pop-up button in
   // a dialog) has to rise above it, or it opens behind the dialog.
-  const inModal = anchor.closest('[aria-modal="true"]') !== null;
+  const inModal = anchor instanceof HTMLElement && anchor.closest('[aria-modal="true"]') !== null;
 
   useLayoutEffect(() => {
+    if (!(anchor instanceof HTMLElement)) {
+      // Rendered hidden first, so its size is known before it's placed.
+      const size = panel.current?.getBoundingClientRect() ?? { width: 0, height: 0 };
+      setPosition(pointPosition(anchor, size, { width: window.innerWidth, height: window.innerHeight }));
+      return;
+    }
     const rect = anchor.getBoundingClientRect();
     const gap = 6;
     const width = matchWidth ? { minWidth: rect.width } : {};
@@ -52,7 +61,7 @@ export function Menu({ anchor, placement = 'below-end', onClose, label, matchWid
       if (event.key === 'Escape') {
         event.stopPropagation();
         onClose();
-        anchor.focus();
+        if (anchor instanceof HTMLElement) anchor.focus();
       } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         event.preventDefault();
         const items = [...(panel.current?.querySelectorAll<HTMLElement>('[role^="menuitem"]:not(:disabled)') ?? [])];

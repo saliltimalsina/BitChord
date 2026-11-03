@@ -34,6 +34,7 @@ export const pages: PageRoute[] = [
   { path: '/library/:section', load: () => import('@/pages/LibraryPage'), skeleton: <PlainSkeleton /> },
   { path: '/spotify', load: () => import('@/pages/SpotifyPage'), skeleton: <PlainSkeleton /> },
   { path: '/spotify/playlist/:id', load: () => import('@/pages/SpotifyPlaylistPage'), skeleton: <PlaylistSkeleton /> },
+  { path: '/stats', load: () => import('@/pages/StatsPage'), skeleton: <PlainSkeleton /> },
   { path: '/settings', load: () => import('@/pages/SettingsPage'), skeleton: <PlainSkeleton /> },
   { path: '/settings/discord', load: () => import('@/pages/DiscordSettingsPage'), skeleton: <PlainSkeleton /> },
   { path: '/settings/listen-together', load: () => import('@/pages/ListenTogetherPage'), skeleton: <PlainSkeleton /> },

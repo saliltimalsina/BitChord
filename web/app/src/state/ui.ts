@@ -16,6 +16,9 @@ interface UiState {
   /** The ⌘K quick search over the library, history and YouTube Music. */
   paletteOpen: boolean;
   setPaletteOpen: (open: boolean) => void;
+  /** The keyboard shortcut sheet (?). */
+  shortcutsOpen: boolean;
+  setShortcutsOpen: (open: boolean) => void;
   /** The extension install banner, dismissed for this tab only. */
   installBannerDismissed: boolean;
   dismissInstallBanner: () => void;
@@ -33,6 +36,8 @@ export const useUi = create<UiState>()((set) => ({
   setDrawerOpen: (drawerOpen) => set({ drawerOpen }),
   paletteOpen: false,
   setPaletteOpen: (paletteOpen) => set({ paletteOpen }),
+  shortcutsOpen: false,
+  setShortcutsOpen: (shortcutsOpen) => set({ shortcutsOpen }),
   installBannerDismissed: sessionStorage.getItem(BANNER_KEY) === '1',
   dismissInstallBanner: () => {
     sessionStorage.setItem(BANNER_KEY, '1');

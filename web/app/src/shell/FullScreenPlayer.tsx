@@ -45,8 +45,28 @@ function useBrowserFullScreen(): boolean {
 }
 
 /** The seek line under the track's names: thicker on hover, with the times beneath its ends. */
-function Scrubber() {
+function Scrubber({ inline = false }: { inline?: boolean }) {
   const { bar, elapsed, remaining, mixLabel, dragging, handlers } = useScrubber();
+  if (inline) {
+    // Cinema: elapsed, the line, remaining, on one row right under the artwork.
+    const time = 'w-11 flex-none type-[500_14px/18px] tabular-nums text-secondary';
+    return (
+      <div className="group/scrub mt-[clamp(14px,2.4vh,26px)] flex items-center gap-3" data-dragging={dragging || undefined}>
+        <span ref={elapsed} className={`${time} text-right`} />
+        <div className="group/hit flex h-5 flex-1 cursor-pointer touch-none items-center" {...handlers}>
+          <div
+            className="relative h-1.5 flex-1 overflow-hidden rounded-[999px] bg-white/25 transition-[height] duration-120 ease-in group-hover/hit:h-2.5 group-data-dragging/scrub:h-2.5"
+            aria-hidden="true"
+          >
+            <MixWindowHighlight />
+            <div ref={bar} className="relative size-full origin-left scale-x-(--progress) rounded-[999px] bg-white [--progress:0]" />
+          </div>
+        </div>
+        <span ref={remaining} className={time} />
+        <span ref={mixLabel} className="hidden" aria-hidden="true" />
+      </div>
+    );
+  }
   return (
     <div className="group/scrub mt-3.5" data-dragging={dragging || undefined}>
       {/* A taller hit area than the line it carries. */}
@@ -158,6 +178,7 @@ export function FullScreenPlayer() {
   const [idle, setIdle] = useState(false);
   const [volumeOpen, setVolumeOpen] = useState(false);
   const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastPointer = useRef<{ x: number; y: number } | null>(null);
   const browserFullScreen = useBrowserFullScreen();
   const close = useRef<HTMLButtonElement>(null);
   // Whether this player put the page in the browser's full screen, so closing it leaves it again.
@@ -191,6 +212,13 @@ export function FullScreenPlayer() {
   useEffect(() => {
     const opener = document.activeElement as HTMLElement | null;
     close.current?.focus({ preventScroll: true });
+    // Opening the player is the click that allows it: take the whole screen, as Spicy Lyrics' full screen does.
+    if (!document.fullscreenElement && document.fullscreenEnabled) {
+      void document.documentElement.requestFullscreen().then(
+        () => (enteredBrowserFullScreen.current = true),
+        () => undefined,
+      );
+    }
     return () => {
       if (enteredBrowserFullScreen.current && document.fullscreenElement) void document.exitFullscreen();
       opener?.focus({ preventScroll: true });
@@ -226,8 +254,10 @@ export function FullScreenPlayer() {
   const column = showLyrics || showQueue;
   // A music video on its own fills the window.
   const theater = video && !column;
-  // ...and hides the controls and the pointer while it plays undisturbed.
-  const hidden = theater && playing && idle ? ' pointer-events-none opacity-0' : '';
+  // With the lyrics beside the artwork: a cinema layout, the artwork, its seek line and names centred, and the rest out of the way.
+  const cinema = showLyrics && !video;
+  // Both hide the controls and the pointer while it plays undisturbed.
+  const hidden = (theater || cinema) && playing && idle ? ' pointer-events-none opacity-0' : '';
   const corner = `${chrome} transition-[background-color,color,opacity] duration-300${hidden}`;
 
   return (
@@ -240,10 +270,16 @@ export function FullScreenPlayer() {
       aria-label="Now Playing"
       data-full-screen
       data-paused={!playing || undefined}
-      onPointerMove={wake}
+      onPointerMove={(e) => {
+        // Chrome sends pointermove when the lyrics scroll under a still pointer; only a real move wakes the controls.
+        const last = lastPointer.current;
+        lastPointer.current = { x: e.clientX, y: e.clientY };
+        if (last && last.x === e.clientX && last.y === e.clientY) return;
+        wake();
+      }}
       onPointerDown={wake}
       onKeyDown={wake}
-      style={theater && playing && idle ? { cursor: 'none' } : undefined}
+      style={(theater || cinema) && playing && idle ? { cursor: 'none' } : undefined}
     >
       <MeshBackdrop artworkUrl={nowPlaying.artworkUrl} playing={playing} />
       {theater && (
@@ -329,12 +365,19 @@ export function FullScreenPlayer() {
             {video && !theater && <VideoSurface className="absolute inset-0" />}
           </div>
 
-          <div className={`flex items-center gap-3${theater ? '' : ' mt-[clamp(20px,3.2vh,32px)]'}${column ? ' max-md:mt-0' : ''}`}>
+          {cinema && <Scrubber inline />}
+          <div
+            className={
+              cinema
+                ? 'mt-[clamp(14px,2.6vh,28px)] flex flex-col items-center text-center max-md:mt-3'
+                : `flex items-center gap-3${theater ? '' : ' mt-[clamp(20px,3.2vh,32px)]'}${column ? ' max-md:mt-0' : ''}`
+            }
+          >
             {/* As the mini player's: the title opens the album, each credited name its artist. */}
-            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-              <div className="flex min-w-0 items-center">
+            <div className={cinema ? 'flex w-full min-w-0 flex-col items-center gap-1' : 'flex min-w-0 flex-1 flex-col gap-0.5'}>
+              <div className={`flex min-w-0 items-center${cinema ? ' max-w-full justify-center' : ''}`}>
                 <PageLink
-                  className={`min-w-0 max-w-full self-start truncate type-[600_17px/22px] ${pageLink}`}
+                  className={`min-w-0 max-w-full truncate ${cinema ? 'type-[700_clamp(22px,2.3vw,36px)/1.2]' : 'self-start type-[600_17px/22px]'} ${pageLink}`}
                   href={albumHref(album?.id ?? null)}
                   resolve={() => albumPageFor(videoId, album, [title, artist].filter(Boolean).join(' '))}
                 >
@@ -342,7 +385,7 @@ export function FullScreenPlayer() {
                 </PageLink>
                 {track?.explicit && <ExplicitBadge size={14} />}
               </div>
-              <span className="truncate type-title-3 text-secondary">
+              <span className={`max-w-full truncate text-secondary ${cinema ? 'type-[400_clamp(16px,1.5vw,22px)/1.3]' : 'type-title-3'}`}>
                 {artist && <Credits videoId={videoId} line={artist} artists={track?.artists ?? []} className={pageLink} />}
                 {artist && album?.name && ' — '}
                 {album?.name && (
@@ -355,8 +398,10 @@ export function FullScreenPlayer() {
                   </PageLink>
                 )}
               </span>
-              <NerdStats />
+              {!cinema && <NerdStats />}
             </div>
+            {cinema ? null : (
+              <>
             <FavoriteButton
               videoId={nowPlaying.videoId}
               className="grid size-8 flex-none place-items-center rounded-full bg-quinary text-primary hover:bg-quaternary"
@@ -369,10 +414,35 @@ export function FullScreenPlayer() {
                 placement="above-end"
               />
             )}
+              </>
+            )}
           </div>
 
-          <Scrubber />
-          <Transport />
+          {cinema ? (
+            // The transport, the heart and the menu: there while the pointer moves, gone while it rests.
+            <div className={`transition-opacity duration-300${hidden}`}>
+              <Transport />
+              <div className="mt-1 flex justify-center gap-2">
+                <FavoriteButton
+                  videoId={nowPlaying.videoId}
+                  className="grid size-8 flex-none place-items-center rounded-full bg-quinary text-primary hover:bg-quaternary"
+                  size={18}
+                />
+                {track && (
+                  <TrackMenu
+                    track={track}
+                    className="grid size-8 flex-none place-items-center rounded-full bg-quinary text-primary hover:bg-quaternary"
+                    placement="above-end"
+                  />
+                )}
+              </div>
+            </div>
+          ) : (
+            <>
+              <Scrubber />
+              <Transport />
+            </>
+          )}
         </section>
 
         {showLyrics && (

@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom';
 import { Select } from '@/components/Select';
 import { useDeletePlaylist, useEditPlaylist } from '@/data/music/queries';
 import type { HeaderInfo, PlaylistPrivacy } from '@/data/music/types';
+import { toast } from '@/state/toasts';
 import { privacyOf } from './playlistPrivacy';
 
 const PRIVACY: { value: PlaylistPrivacy; label: string }[] = [
@@ -66,7 +67,7 @@ export function EditPlaylistDialog({
 
   const save = () => {
     if (!changed || busy) return;
-    edit.mutate({ playlistId, ...changes }, { onSuccess: onClose });
+    edit.mutate({ playlistId, ...changes }, { onSuccess: () => (onClose(), toast('Playlist saved')) });
   };
 
   return createPortal(
@@ -109,7 +110,7 @@ export function EditPlaylistDialog({
               <button
                 className={`${button} bg-[#ff453a] text-white enabled:hover:brightness-110 disabled:opacity-50`}
                 disabled={busy}
-                onClick={() => remove.mutate({ playlistId }, { onSuccess: onDeleted })}
+                onClick={() => remove.mutate({ playlistId }, { onSuccess: () => (onDeleted(), toast(`Deleted ${info.title}`)) })}
               >
                 <Trash2 size={15} />
                 {remove.isPending ? 'Deleting…' : 'Delete'}

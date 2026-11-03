@@ -14,6 +14,7 @@ import { useArtworkColor } from '@/lib/artworkColor';
 import { usePageTint } from '@/lib/usePageTint';
 import { useRememberRecent } from '@/state/recents';
 import { PlaylistSkeleton } from '@/skeletons/PageSkeletons';
+import { toast, toastResult } from '@/state/toasts';
 import { detailFooter } from './pageStyles';
 
 /** A playlist (report §14): header, then the artwork track list, loading on as you scroll. */
@@ -87,9 +88,18 @@ export default function PlaylistPage() {
         onNearEnd={wantsAll ? undefined : onNearEnd}
         source={context.source}
         compact={compact}
-        onRemove={editable ? (track) => removeTrack.mutate({ playlistId: id, videoId: track.videoId }) : undefined}
+        onRemove={
+          editable
+            ? (track) => toastResult(removeTrack.mutateAsync({ playlistId: id, videoId: track.videoId }), `Removed from ${header.title}`, 'Couldn’t remove the song')
+            : undefined
+        }
         // Rows sorted or filtered aren't at their places in the playlist: dragging is for its own order.
-        onMove={editable && !wantsAll ? (from, to) => moveTrack.mutate({ playlistId: id, videoId: all[from]!.videoId, from, to }) : undefined}
+        onMove={
+          editable && !wantsAll
+            ? (from, to) =>
+                moveTrack.mutateAsync({ playlistId: id, videoId: all[from]!.videoId, from, to }).catch(() => toast('Couldn’t save the new order', { error: true }))
+            : undefined
+        }
       />
       {query.trim() && !shown.length && !hasNextPage && (
         <p className="py-10 text-center type-body text-secondary">No songs match “{query.trim()}”.</p>

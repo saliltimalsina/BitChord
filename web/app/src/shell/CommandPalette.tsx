@@ -8,7 +8,7 @@ import { playList, playTrack } from '@/components/music/play';
 import { LIKED_MUSIC_PLAYLIST } from '@/data/music/library';
 import { albumQuery, artistQuery, playlistQuery, searchQuery, useLibraryPlaylists, useSignedIn, useYouTubeReady } from '@/data/music/queries';
 import type { MusicItem } from '@/data/music/types';
-import { useSpotifyPlaylists } from '@/data/spotify/queries';
+import { useSpotifyPlaylistSearch, useSpotifyPlaylists } from '@/data/spotify/queries';
 import { queryClient } from '@/lib/queryClient';
 import { useRecents, type RecentItem } from '@/state/recents';
 import { useUi } from '@/state/ui';
@@ -164,6 +164,7 @@ function Palette({ closing }: { closing: boolean }) {
   const library = useLibraryPlaylists();
   const spotify = useSpotifyPlaylists();
   const search = useQuery({ ...searchQuery(query), enabled: ready && query.length > 0, placeholderData: keepPreviousData });
+  const spotifySearch = useSpotifyPlaylistSearch(query);
 
   // The focus to give back on close, and the page under the palette held still.
   useLayoutEffect(() => {
@@ -195,15 +196,18 @@ function Palette({ closing }: { closing: boolean }) {
       ].filter((s) => s.rows.length);
     }
     const mine = localMatches([...recents, ...libraryItems], value);
-    const results = search.data && query ? flattenResults(search.data, new Set(mine.map((m) => m.id))) : [];
+    const shown = new Set(mine.map((m) => m.id));
+    const fromSpotify = query ? (spotifySearch.data ?? []).filter((p) => !shown.has(p.id)).slice(0, 8) : [];
+    const results = search.data && query ? flattenResults(search.data, shown) : [];
     return [
       { title: 'Your library', rows: mine.map((item) => ({ item, tag: true })) },
+      { title: 'Spotify playlists', rows: fromSpotify.map((item) => ({ item, tag: true })) },
       { title: 'YouTube Music', rows: results.map((item) => ({ item, tag: true })) },
     ].filter((s) => s.rows.length);
-  }, [typing, recents, libraryItems, value, search.data, query]);
+  }, [typing, recents, libraryItems, value, search.data, spotifySearch.data, query]);
 
   const rows = useMemo(() => sections.flatMap((s) => s.rows), [sections]);
-  const searching = typing && (value.trim() !== query || search.isFetching);
+  const searching = typing && (value.trim() !== query || search.isFetching || spotifySearch.isFetching);
 
   // Keep the selection on the first row as the list changes under it.
   useEffect(() => setActive(0), [value]);

@@ -13,6 +13,7 @@ import { useYtAuth, ytAuthSnapshot } from '@/extension/useYtAuth';
 import { queryClient } from '@/lib/queryClient';
 import {
   addToPlaylist,
+  createPlaylist,
   deletePlaylist,
   editPlaylist,
   moveItem,
@@ -261,6 +262,17 @@ export function usePlaylistOptions(videoId: string, enabled: boolean) {
     queryFn: () => fetchPlaylistOptions(videoId),
     enabled: signedIn && enabled,
     staleTime: 0,
+  });
+}
+
+/** A new private playlist holding [videoId]: Add to Playlist's "New Playlist". */
+export function useCreatePlaylist() {
+  return useMutation({
+    mutationFn: ({ title, videoId }: { title: string; videoId: string }) => createPlaylist(title, [videoId]),
+    onSettled: (_data, _error, { videoId }) => {
+      void queryClient.invalidateQueries({ queryKey: ['music', 'library'] });
+      void queryClient.invalidateQueries({ queryKey: ['music', 'playlist-options', videoId] });
+    },
   });
 }
 

@@ -13,6 +13,8 @@ import { TrackMenu, useTrackContextMenu } from './TrackMenu';
 type Variant = 'album' | 'playlist';
 
 const ROW_HEIGHT: Record<Variant, number> = { album: 46, playlist: 54 };
+/** A playlist's compact view: no artwork, the position instead, 36px rows. */
+const COMPACT_ROW_HEIGHT = 36;
 /** Below this, plain rows: an album or a short playlist gains nothing from virtualizing. */
 const VIRTUALIZE_FROM = 80;
 
@@ -31,6 +33,8 @@ interface TrackListProps {
   onRemove?: (track: Track) => void;
   /** The user's own playlist: rows can be dragged up and down; called with the old and new position. */
   onMove?: (from: number, to: number) => void;
+  /** Playlists only: compact rows, numbered, with no artwork. */
+  compact?: boolean;
 }
 
 /** A row being dragged, and the gap it would drop into (0 = before the first row). */
@@ -68,7 +72,7 @@ const row = [
 
 const rowVariant: Record<Variant, string> = {
   album: 'h-[46px] grid-cols-[minmax(0,1fr)_auto] rounded-row',
-  playlist: `h-[54px] ${playlistColumns} rounded-[12px] max-md:grid-cols-[minmax(0,1fr)_auto]`,
+  playlist: `h-[54px] ${playlistColumns} rounded-[12px] data-compact:h-9 data-compact:rounded-row max-md:grid-cols-[minmax(0,1fr)_auto]`,
 };
 
 function Artists({ artists }: { artists: ArtistRef[] }) {
@@ -115,9 +119,11 @@ interface RowProps {
     onDrop: () => void;
     onEnd: () => void;
   };
+  compact?: boolean | undefined;
 }
 
-function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, drag }: RowProps) {
+function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, drag, compact }: RowProps) {
+  const artwork = variant === 'playlist' && !compact;
   const current = usePlayer((s) => s.nowPlaying?.videoId === track.videoId);
   const playing = usePlayer((s) => s.nowPlaying?.videoId === track.videoId && (s.status === 'playing' || s.status === 'buffering'));
   const togglePlay = usePlayer((s) => s.togglePlay);
@@ -129,6 +135,7 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
     <div
       className={`${row} ${rowVariant[variant]}`}
       data-variant={variant}
+      data-compact={compact || undefined}
       data-current={current || undefined}
       data-unavailable={unavailable}
       title={unavailable === 'matching' ? 'Looking for this on YouTube Music…' : unavailable === 'missing' ? 'Not found on YouTube Music' : undefined}
@@ -159,7 +166,7 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
       {context.menu}
       <div className={`${cell} gap-3`}>
         <div className={`relative grid w-10 shrink-0 place-items-center${variant === 'playlist' ? ' ms-[7px]' : ''}`}>
-          {variant === 'playlist' ? (
+          {artwork ? (
             <>
               <Artwork src={track.thumbnail ?? fallbackArtwork ?? null} displayWidth={40} radius="var(--radius-artwork-small)" />
               {current && (
@@ -185,13 +192,13 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
           )}
           <button
             className={`absolute inset-0 grid place-items-center rounded-artwork-sm opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100 group-data-unavailable/row:hidden ${
-              variant === 'playlist' ? 'bg-lockup-hover text-white' : 'text-primary'
+              artwork ? 'bg-lockup-hover text-white' : 'text-primary'
             }`}
             aria-label={playing ? `Pause ${track.title}` : `Play ${track.title}`}
             onClick={onPlay}
             disabled={!!unavailable}
           >
-            {playing ? <PauseIcon size={variant === 'playlist' ? 18 : 16} /> : <PlayIcon size={variant === 'playlist' ? 18 : 16} />}
+            {playing ? <PauseIcon size={artwork ? 18 : 16} /> : <PlayIcon size={artwork ? 18 : 16} />}
           </button>
         </div>
         <div
@@ -262,7 +269,7 @@ function Header() {
  * hover fill, the number (or artwork) turning into a play button. Long lists
  * are virtualized against the page's scroll container (prompt §3).
  */
-export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, onNearEnd, source, onRemove, onMove }: TrackListProps) {
+export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, onNearEnd, source, onRemove, onMove, compact }: TrackListProps) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const dragProps = (i: number): RowProps['drag'] =>
     onMove && {
@@ -297,10 +304,13 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
   const virtualizer = useVirtualizer({
     count: virtual ? tracks.length : 0,
     getScrollElement: () => scrollElement,
-    estimateSize: () => ROW_HEIGHT[variant],
+    estimateSize: () => (compact ? COMPACT_ROW_HEIGHT : ROW_HEIGHT[variant]),
     overscan: 10,
     scrollMargin: container.current?.offsetTop ?? 0,
   });
+
+  // The rows' height changes with the view; the measured ones are stale.
+  useEffect(() => virtualizer.measure(), [compact, virtualizer]);
 
   const items = virtual ? virtualizer.getVirtualItems() : [];
   const last = items[items.length - 1];
@@ -334,6 +344,7 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
                   onPlayRow={() => playRow(item.index)}
                   onRemove={onRemove && (() => onRemove(tracks[item.index]!))}
                   drag={dragProps(item.index)}
+                  compact={compact}
                 />
               </div>
             ))}
@@ -349,6 +360,7 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
               onPlayRow={() => playRow(i)}
               onRemove={onRemove && (() => onRemove(track))}
               drag={dragProps(i)}
+              compact={compact}
             />
           ))
         )}

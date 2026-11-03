@@ -1,3 +1,4 @@
+import { Maximize2 } from 'lucide-react';
 import { useState } from 'react';
 import {
   BackwardIcon,
@@ -30,6 +31,7 @@ const fading = `${action} ${fadeForVolume}`;
 export function PlayerBar() {
   const sidePanel = useUi((s) => s.sidePanel);
   const toggleSidePanel = useUi((s) => s.toggleSidePanel);
+  const setFullScreen = useUi((s) => s.setFullScreen);
   const hasTrack = usePlayer((s) => s.nowPlaying !== null);
   const videoId = usePlayer((s) => s.nowPlaying?.videoId ?? null);
   // The queue's entry for what's playing: the track menu needs the full track.
@@ -105,6 +107,9 @@ export function PlayerBar() {
             onClick={() => toggleSidePanel('up-next')}
           >
             <UpNextIcon size={18} />
+          </button>
+          <button className={fading} disabled={!hasTrack} aria-label="Full screen player (F)" title="Full screen (F)" onClick={() => setFullScreen(true)}>
+            <Maximize2 size={16} strokeWidth={2} />
           </button>
           <VolumeControl open={volumeOpen} onOpen={() => setVolumeOpen(true)} className={action} />
         </div>

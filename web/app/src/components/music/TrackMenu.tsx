@@ -17,8 +17,14 @@ import { albumHref, artistHref, songLink } from './links';
 import { startRadio } from './play';
 import { toast, toastResult } from '@/state/toasts';
 
-function PlaylistChoices({ videoId, onDone, onBack }: { videoId: string; onDone: () => void; onBack: () => void }) {
-  const options = usePlaylistOptions(videoId, true);
+/** "a song" or "3 songs", for menus and toasts that act on a selection. */
+function songsLabel(count: number): string {
+  return count === 1 ? 'a song' : `${count} songs`;
+}
+
+/** Add to Playlist's list: one song, or every one picked (asked about as the first). */
+function PlaylistChoices({ videoIds, onDone, onBack }: { videoIds: string[]; onDone: () => void; onBack: () => void }) {
+  const options = usePlaylistOptions(videoIds[0]!, true);
   const add = useAddToPlaylist();
   return (
     <>
@@ -47,8 +53,8 @@ function PlaylistChoices({ videoId, onDone, onBack }: { videoId: string; onDone:
           key={option.playlistId}
           onSelect={() => {
             toastResult(
-              add.mutateAsync({ playlistId: option.playlistId, videoId }),
-              { message: `Added to ${option.title}`, action: { label: 'View', href: `/playlist/${encodeURIComponent(option.playlistId)}` } },
+              add.mutateAsync({ playlistId: option.playlistId, videoIds }),
+              { message: videoIds.length > 1 ? `Added ${songsLabel(videoIds.length)} to ${option.title}` : `Added to ${option.title}`, action: { label: 'View', href: `/playlist/${encodeURIComponent(option.playlistId)}` } },
               `Couldn’t add to ${option.title}`,
             );
             onDone();
@@ -130,12 +136,44 @@ function GoToAlbum({ track, onGo }: { track: Track; onGo: (href: string) => void
   );
 }
 
+/** The menu for several picked songs: queue them, or add them all to a playlist. */
+function ManyTracksItems({ tracks, onClose }: { tracks: Track[]; onClose: () => void }) {
+  const [choosing, setChoosing] = useState(false);
+  const signedIn = useSignedIn();
+  if (choosing) return <PlaylistChoices videoIds={tracks.map((t) => t.videoId)} onDone={onClose} onBack={() => setChoosing(false)} />;
+  const { playNext, addToQueue } = usePlayer.getState();
+  return (
+    <>
+      <MenuHeader>{songsLabel(tracks.length)}</MenuHeader>
+      <MenuItem icon={<ListStart size={15} />} onSelect={() => (onClose(), playNext(tracks), toast(`Playing ${songsLabel(tracks.length)} next`))}>
+        Play Next
+      </MenuItem>
+      <MenuItem icon={<ListEnd size={15} />} onSelect={() => (onClose(), addToQueue(tracks), toast(`Added ${songsLabel(tracks.length)} to the queue`))}>
+        Add to Queue
+      </MenuItem>
+      {signedIn && (
+        <>
+          <MenuSeparator />
+          <MenuItem icon={<ListPlus size={15} />} trailing={<ChevronRight size={14} />} onSelect={() => setChoosing(true)}>
+            Add to Playlist
+          </MenuItem>
+        </>
+      )}
+    </>
+  );
+}
+
+/** One song's menu, or the picked songs' menu when [many] holds more than one. */
+function MenuFor({ track, many, onClose }: { track: Track; many?: Track[] | null | undefined; onClose: () => void }) {
+  return many && many.length > 1 ? <ManyTracksItems tracks={many} onClose={onClose} /> : <TrackMenuItems track={track} onClose={onClose} />;
+}
+
 function TrackMenuItems({ track, onClose }: { track: Track; onClose: () => void }) {
   const [view, setView] = useState<'main' | 'playlists' | 'artists'>('main');
   const signedIn = useSignedIn();
   const navigate = useNavigate();
   if (view === 'playlists') {
-    return <PlaylistChoices videoId={track.videoId} onDone={onClose} onBack={() => setView('main')} />;
+    return <PlaylistChoices videoIds={[track.videoId]} onDone={onClose} onBack={() => setView('main')} />;
   }
   // Leaving the full-screen player too, or the page would open behind it.
   const go = (href: string) => {
@@ -194,13 +232,22 @@ function TrackMenuItems({ track, onClose }: { track: Track; onClose: () => void 
  * Right-click on a song (a row, a card): the ⋯ menu, opened where the click
  * was. Spread [onContextMenu] on the element and render [menu] beside it.
  */
-export function useTrackContextMenu(track: Track | null): { onContextMenu: ((event: MouseEvent) => void) | undefined; menu: ReactNode } {
+export function useTrackContextMenu(
+  track: Track | null,
+  /**
+   * In a list where songs can be picked: called on the right-click, answering
+   * the songs the menu acts on (the picked ones, when this row is one of them).
+   */
+  onOpen?: () => Track[] | null,
+): { onContextMenu: ((event: MouseEvent) => void) | undefined; menu: ReactNode } {
   const [at, setAt] = useState<MenuPoint | null>(null);
+  const [many, setMany] = useState<Track[] | null>(null);
   const close = useCallback(() => setAt(null), []);
   return {
     onContextMenu: track
       ? (event) => {
           event.preventDefault();
+          setMany(onOpen?.() ?? null);
           setAt({ x: event.clientX, y: event.clientY });
         }
       : undefined,
@@ -213,8 +260,8 @@ export function useTrackContextMenu(track: Track | null): { onContextMenu: ((eve
           onDoubleClick={(event) => event.stopPropagation()}
           onContextMenu={(event) => (event.preventDefault(), event.stopPropagation())}
         >
-          <Menu anchor={at} onClose={close} label={track.title}>
-            <TrackMenuItems track={track} onClose={close} />
+          <Menu anchor={at} onClose={close} label={many && many.length > 1 ? songsLabel(many.length) : track.title}>
+            <MenuFor track={track} many={many} onClose={close} />
           </Menu>
         </div>
       ) : null,
@@ -231,8 +278,11 @@ export function TrackMenu({
   className,
   placement,
   onOpenChange,
+  many,
 }: {
   track: Track;
+  /** The picked songs, when this row is one of several: the menu acts on them all. */
+  many?: Track[] | null;
   className?: string;
   /** Where the menu opens from the button; the player's sit at the bottom of the window. */
   placement?: MenuPlacement;
@@ -261,8 +311,8 @@ export function TrackMenu({
         <MoreHorizontal size={18} strokeWidth={2} />
       </button>
       {anchor && (
-        <Menu anchor={anchor} placement={placement} onClose={close} label={track.title}>
-          <TrackMenuItems track={track} onClose={close} />
+        <Menu anchor={anchor} placement={placement} onClose={close} label={many && many.length > 1 ? songsLabel(many.length) : track.title}>
+          <MenuFor track={track} many={many} onClose={close} />
         </Menu>
       )}
     </>

@@ -275,11 +275,16 @@ export async function fetchPlaylistOptions(videoId: string): Promise<PlaylistOpt
     .filter((option) => option.playlistId && option.playlistId !== LIKED_MUSIC_PLAYLIST && option.title);
 }
 
-export async function addToPlaylist(playlistId: string, videoId: string): Promise<void> {
+/** Adds one song, or several in a single request (one action each, in order). */
+export async function addToPlaylist(playlistId: string, videoIds: string | readonly string[]): Promise<void> {
   const yt = await getSignedInnertube();
   await yt.actions.execute('/browse/edit_playlist', {
     playlistId: playlistId.replace(/^VL/, ''),
-    actions: [{ action: 'ACTION_ADD_VIDEO', addedVideoId: videoId, dedupeOption: 'DEDUPE_OPTION_SKIP' }],
+    actions: (typeof videoIds === 'string' ? [videoIds] : videoIds).map((videoId) => ({
+      action: 'ACTION_ADD_VIDEO',
+      addedVideoId: videoId,
+      dedupeOption: 'DEDUPE_OPTION_SKIP',
+    })),
     client: 'YTMUSIC',
   });
 }

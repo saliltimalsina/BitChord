@@ -1,5 +1,5 @@
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react';
 import { PrefetchLink } from '@/components/PrefetchLink';
 import { PauseIcon, PlayIcon } from '@/components/icons/Transport';
 import type { ArtistRef, Track } from '@/data/music/types';
@@ -8,6 +8,7 @@ import { Artwork } from './Artwork';
 import { ExplicitBadge } from './ExplicitBadge';
 import { albumHref, artistHref, formatDuration } from './links';
 import { playList, playTrack, type ListContext } from './play';
+import { clickSelection, NO_SELECTION, selectedItems, type Selection } from './selection';
 import { TrackMenu, useTrackContextMenu } from './TrackMenu';
 
 type Variant = 'album' | 'playlist';
@@ -46,10 +47,12 @@ const link = 'text-inherit hover:underline group-data-current/row:text-primary';
  * a fill on hover, a stronger one for the playing row.
  */
 const row = [
-  'group/row relative grid items-center bg-transparent hover:bg-tracklist-hover data-unavailable:cursor-default',
+  'group/row relative grid items-center bg-transparent select-none hover:bg-tracklist-hover data-unavailable:cursor-default',
   'data-current:bg-[color-mix(in_srgb,var(--systemPrimary)_12%,transparent)]',
   'before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:border-t-[0.5px] before:border-t-divider',
   'hover:before:border-t-transparent data-current:before:border-t-transparent [&:hover+&]:before:border-t-transparent [&[data-current]+&]:before:border-t-transparent',
+  // Picked rows (click, ⌘/Ctrl-click, Shift-click): the key colour, stronger than hover.
+  'data-selected:bg-[color-mix(in_srgb,var(--keyColor)_24%,transparent)] data-selected:before:border-t-transparent [&[data-selected]+&]:before:border-t-transparent',
 ].join(' ');
 
 const rowVariant: Record<Variant, string> = {
@@ -90,24 +93,36 @@ interface RowProps {
   position: number;
   fallbackArtwork: string | null | undefined;
   onPlayRow: () => void;
+  selected: boolean;
+  /** A click on the row itself (not a button or link in it): pick it. */
+  onPick: (event: MouseEvent) => void;
+  /** Right-click: picks the row if it isn't already, and answers the songs the menu acts on. */
+  onContext: () => Track[] | null;
+  /** The picked songs, when this row is one of several: its ⋯ acts on them all. */
+  many: Track[] | null;
 }
 
-function Row({ track, variant, position, fallbackArtwork, onPlayRow }: RowProps) {
+function Row({ track, variant, position, fallbackArtwork, onPlayRow, selected, onPick, onContext, many }: RowProps) {
   const current = usePlayer((s) => s.nowPlaying?.videoId === track.videoId);
   const playing = usePlayer((s) => s.nowPlaying?.videoId === track.videoId && (s.status === 'playing' || s.status === 'buffering'));
   const togglePlay = usePlayer((s) => s.togglePlay);
   const unavailable = track.unavailable;
   const onPlay = () => (unavailable ? undefined : current ? togglePlay() : onPlayRow());
-  const context = useTrackContextMenu(unavailable ? null : track);
+  const context = useTrackContextMenu(unavailable ? null : track, onContext);
 
   return (
     <div
       className={`${row} ${rowVariant[variant]}`}
       data-variant={variant}
       data-current={current || undefined}
+      data-selected={selected || undefined}
+      aria-selected={selected}
       data-unavailable={unavailable}
       title={unavailable === 'matching' ? 'Looking for this on YouTube Music…' : unavailable === 'missing' ? 'Not found on YouTube Music' : undefined}
       onDoubleClick={onPlay}
+      onClick={(event) => {
+        if (!(event.target as Element).closest('button, a, input')) onPick(event);
+      }}
       onContextMenu={context.onContextMenu}
     >
       {context.menu}
@@ -191,6 +206,7 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow }: RowProps)
         {!unavailable && (
           <TrackMenu
             track={track}
+            many={many}
             className="absolute end-2.5 hidden size-7 place-items-center rounded-full text-key group-focus-within/row:grid group-hover/row:grid hover:bg-quinary data-open:grid"
           />
         )}
@@ -226,6 +242,45 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
     playTrack(track.artists.length || !fallbackArtists ? track : { ...track, artists: fallbackArtists }, fallbackArtwork);
   };
   const container = useRef<HTMLDivElement>(null);
+
+  // Picking songs, as in Spotify: click, ⌘/Ctrl-click, Shift-click; Esc or a click elsewhere lets go.
+  const [selection, setSelection] = useState<Selection>(NO_SELECTION);
+  const picked = selection.rows.size;
+  const first = tracks[0]?.videoId;
+  // A different list (sorted, filtered, another page) lets go; more pages loading under it don't.
+  useEffect(() => setSelection(NO_SELECTION), [first]);
+  useEffect(() => {
+    if (!picked) return;
+    const outside = (event: Event) => {
+      const target = event.target as Element | null;
+      if (!target?.closest('[role="menu"]') && !container.current?.contains(target)) setSelection(NO_SELECTION);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !(event.target as Element | null)?.closest('[role="menu"], [role="dialog"]')) setSelection(NO_SELECTION);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [picked]);
+  const pick = useCallback(
+    (i: number, event: MouseEvent) =>
+      setSelection((s) => clickSelection(s, i, { toggle: event.metaKey || event.ctrlKey, range: event.shiftKey })),
+    [],
+  );
+  const pickedTracks = picked > 1 ? selectedItems(tracks, selection) : null;
+  const rowSelection = (i: number) => ({
+    selected: selection.rows.has(i),
+    onPick: (event: MouseEvent) => pick(i, event),
+    onContext: () => {
+      if (selection.rows.has(i) && picked > 1) return selectedItems(tracks, selection);
+      setSelection(clickSelection(NO_SELECTION, i, { toggle: false, range: false }));
+      return null;
+    },
+    many: selection.rows.has(i) ? pickedTracks : null,
+  });
   const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
   useEffect(() => setScrollElement(document.getElementById('scrollable-page')), []);
   const virtual = tracks.length >= VIRTUALIZE_FROM;
@@ -268,6 +323,7 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
                   position={item.index + 1}
                   fallbackArtwork={fallbackArtwork}
                   onPlayRow={() => playRow(item.index)}
+                  {...rowSelection(item.index)}
                 />
               </div>
             ))}
@@ -281,6 +337,7 @@ export function TrackList({ tracks, variant, fallbackArtwork, fallbackArtists, o
               position={i + 1}
               fallbackArtwork={fallbackArtwork}
               onPlayRow={() => playRow(i)}
+              {...rowSelection(i)}
             />
           ))
         )}

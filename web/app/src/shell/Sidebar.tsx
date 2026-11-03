@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowUpRight, Command, ListMusic, Pin, Settings } from 'lucide-react';
+import { ArrowUpRight, BarChart3, Command, ListMusic, Pin, Settings } from 'lucide-react';
 import { MdOutlineExtension } from 'react-icons/md';
 import { PrefetchLink, PrefetchNavLink } from '@/components/PrefetchLink';
 import { LogoMark } from '@/components/icons/LogoMark';
@@ -32,6 +32,11 @@ import { toastResult } from '@/state/toasts';
 import { useUi } from '@/state/ui';
 import { AccountButton } from './AccountButton';
 
+/** Listening Stats' glyph, drawn at the other nav icons' size. */
+function StatsIcon({ size = 28, ...props }: NavIconProps) {
+  return <BarChart3 width={size} height={size} strokeWidth={1.6} {...(props as object)} />;
+}
+
 interface NavItem {
   to: string;
   label: string;
@@ -52,11 +57,15 @@ const LIBRARY_ICONS: Record<Exclude<LibrarySection, 'playlists'>, NavItem['Icon'
   'made-for-you': MadeForYouIcon,
 };
 
-const LIBRARY: NavItem[] = (Object.keys(LIBRARY_ICONS) as (keyof typeof LIBRARY_ICONS)[]).map((section) => ({
-  to: `/library/${section}`,
-  label: LIBRARY_SECTIONS[section].title,
-  Icon: LIBRARY_ICONS[section],
-}));
+const LIBRARY: NavItem[] = [
+  ...(Object.keys(LIBRARY_ICONS) as (keyof typeof LIBRARY_ICONS)[]).map((section) => ({
+    to: `/library/${section}`,
+    label: LIBRARY_SECTIONS[section].title,
+    Icon: LIBRARY_ICONS[section],
+  })),
+  // Kept in this browser, not YouTube's, but it's about the library: it sits with it.
+  { to: '/stats', label: 'Listening Stats', Icon: StatsIcon },
+];
 
 // A sidebar row; NavLink sets aria-current on the page's own row.
 const item =

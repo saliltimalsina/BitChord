@@ -27,6 +27,9 @@ const KIND_LABEL: Record<MusicItem['kind'], string> = {
 };
 
 const LIKED_ID = `VL${LIKED_MUSIC_PLAYLIST}`;
+/** How many of YouTube's top results lead, and how many Spotify playlists follow them. */
+const TOP_RESULTS = 3;
+const SPOTIFY_RESULTS = 5;
 
 interface Row {
   item: RecentItem;
@@ -197,12 +200,20 @@ function Palette({ closing }: { closing: boolean }) {
     }
     const mine = localMatches([...recents, ...libraryItems], value);
     const shown = new Set(mine.map((m) => m.id));
-    const fromSpotify = query ? (spotifySearch.data ?? []).filter((p) => !shown.has(p.id)).slice(0, 8) : [];
     const results = search.data && query ? flattenResults(search.data, shown) : [];
+    // As Spotify's own search: the best matches (YouTube's top results: the
+    // song, artist or album being looked for) first, then a few playlists,
+    // then the rest. Playlists never push the song itself down.
+    const topIds = new Set((search.data?.top ?? []).slice(0, TOP_RESULTS).map((item) => item.id));
+    const top = results.filter((item) => topIds.has(item.id));
+    const rest = results.filter((item) => !topIds.has(item.id));
+    const fromSpotify = query ? (spotifySearch.data ?? []).filter((p) => !shown.has(p.id)).slice(0, SPOTIFY_RESULTS) : [];
+    const row = (item: RecentItem) => ({ item, tag: true });
     return [
-      { title: 'Your library', rows: mine.map((item) => ({ item, tag: true })) },
-      { title: 'Spotify playlists', rows: fromSpotify.map((item) => ({ item, tag: true })) },
-      { title: 'YouTube Music', rows: results.map((item) => ({ item, tag: true })) },
+      { title: 'Your library', rows: mine.map(row) },
+      { title: 'Top results', rows: top.map(row) },
+      { title: 'Spotify playlists', rows: fromSpotify.map(row) },
+      { title: top.length ? 'More from YouTube Music' : 'YouTube Music', rows: rest.map(row) },
     ].filter((s) => s.rows.length);
   }, [typing, recents, libraryItems, value, search.data, spotifySearch.data, query]);
 

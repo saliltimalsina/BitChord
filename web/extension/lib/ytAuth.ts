@@ -290,7 +290,12 @@ async function readAccounts(): Promise<{ list: StoredAccount[]; webIndex: string
   const seen = new Set<string>();
   for (const { account } of results) {
     if (!account) continue;
-    const key = account.email ?? `${account.name}|${account.channels.map((c) => c.id.split(':')[1]).join(',')}`;
+    // The same login can answer at more than one index; two logins with the
+    // same display name (and, without an email, both channels "own") are still
+    // two accounts, told apart by their channels' handles and the picture.
+    const key =
+      account.email ??
+      [account.name, account.channels.map((c) => `${c.pageId ?? 'own'}:${c.handle ?? ''}`).join(','), account.avatarUrl ?? ''].join('|');
     if (seen.has(key)) continue;
     seen.add(key);
     list.push(account);

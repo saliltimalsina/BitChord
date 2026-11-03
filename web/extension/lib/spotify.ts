@@ -583,6 +583,8 @@ export async function searchTracks(query: string): Promise<SpotifyTrack[]> {
   );
 }
 
+let rereadForSearch = false;
+
 /** Public playlists for [query], as Spotify's own search lists them. */
 export async function searchPlaylists(query: string): Promise<SpotifyPlaylist[]> {
   const variables = {
@@ -596,7 +598,13 @@ export async function searchPlaylists(query: string): Promise<SpotifyPlaylist[]>
     includeArtistHasConcertsField: false,
     includeLocalConcertsField: false,
   };
-  const player = await webPlayer();
+  let player = await webPlayer();
+  // A web player read before these were looked for (it's kept for hours) has
+  // neither: read it again, once per worker, before giving up.
+  if (!player.hashes.searchPlaylists && !player.hashes.searchDesktop && !rereadForSearch) {
+    rereadForSearch = true;
+    player = await webPlayer(true);
+  }
   // searchPlaylists is the Playlists tab; searchDesktop, the All tab, carries a few too.
   if (player.hashes.searchPlaylists) return parseSearchPlaylists(await gql('searchPlaylists', variables));
   return parseSearchPlaylists(await gql('searchDesktop', { ...variables, limit: 10 }));

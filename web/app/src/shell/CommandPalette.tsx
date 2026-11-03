@@ -153,7 +153,8 @@ function Palette({ closing }: { closing: boolean }) {
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   const [value, setValue] = useState('');
-  const [active, setActive] = useState(0);
+  // Nothing is selected until an arrow key (or the pointer) picks a row; Enter alone searches.
+  const [active, setActive] = useState(-1);
   const [starting, setStarting] = useState<string | null>(null);
   // Where the pointer last was. Chrome sends mousemove when rows shift under a
   // still pointer (new results, scrolling); only a real move picks a row.
@@ -221,9 +222,9 @@ function Palette({ closing }: { closing: boolean }) {
   const searching = typing && (value.trim() !== query || search.isFetching || spotifySearch.isFetching);
 
   // Keep the selection on the first row as the list changes under it.
-  useEffect(() => setActive(0), [value]);
+  useEffect(() => setActive(-1), [value]);
   useEffect(() => {
-    if (active >= rows.length) setActive(Math.max(0, rows.length - 1));
+    if (active >= rows.length) setActive(-1);
   }, [rows.length, active]);
   useEffect(() => {
     list.current?.querySelector(`[data-index="${active}"]`)?.scrollIntoView({ block: 'nearest' });
@@ -251,8 +252,15 @@ function Palette({ closing }: { closing: boolean }) {
   };
 
   const pick = (index: number, playIt: boolean) => {
+    if (starting || closing) return;
     const row = rows[index];
-    if (!row || starting || closing) return;
+    if (!row) {
+      // No row picked: Enter runs the full search for what was typed.
+      const q = value.trim();
+      if (!q) return;
+      close();
+      return void navigate(`/search?q=${encodeURIComponent(q)}`);
+    }
     if (playIt) void play(row.item);
     else openItem(row.item);
   };
@@ -260,10 +268,10 @@ function Palette({ closing }: { closing: boolean }) {
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((i) => (rows.length ? (i + 1) % rows.length : 0));
+      setActive((i) => (rows.length ? (i + 1 >= rows.length ? 0 : i + 1) : -1));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((i) => (rows.length ? (i - 1 + rows.length) % rows.length : 0));
+      setActive((i) => (rows.length ? (i <= -1 ? rows.length - 1 : i - 1) : -1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
       pick(active, e.shiftKey);
@@ -274,7 +282,7 @@ function Palette({ closing }: { closing: boolean }) {
     } else if (e.key === 'Tab') {
       // Focus stays in the field; Tab moves the selection like the arrows.
       e.preventDefault();
-      setActive((i) => (rows.length ? (i + (e.shiftKey ? rows.length - 1 : 1)) % rows.length : 0));
+      setActive((i) => (rows.length ? (e.shiftKey ? (i <= -1 ? rows.length - 1 : i - 1) : i + 1 >= rows.length ? 0 : i + 1) : -1));
     }
   };
 
@@ -314,7 +322,7 @@ function Palette({ closing }: { closing: boolean }) {
             role="combobox"
             aria-expanded="true"
             aria-controls={listId}
-            aria-activedescendant={rows.length ? `${listId}-${active}` : undefined}
+            aria-activedescendant={active >= 0 && rows.length ? `${listId}-${active}` : undefined}
             autoComplete="off"
             spellCheck={false}
             onChange={(e) => setValue(e.target.value)}
@@ -375,7 +383,7 @@ function Palette({ closing }: { closing: boolean }) {
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-t border-divider px-5 py-2.5 type-callout text-secondary max-sm:hidden">
           <Hint keys={['↑', '↓']} label="to move" />
-          <Hint keys={['Enter']} label="to open" />
+          <Hint keys={['Enter']} label={active < 0 && typing ? 'to search' : 'to open'} />
           <Hint keys={['Shift', 'Enter']} label="to play" />
           <Hint keys={['Esc']} label="to close" />
         </div>

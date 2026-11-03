@@ -49,6 +49,12 @@ export function useKeyboardShortcuts() {
         event.preventDefault();
         return player.togglePlay();
       }
+      if ((event.key === 'f' || event.key === 'F') && !command && !event.shiftKey) {
+        const ui = useUi.getState();
+        if (!player.nowPlaying) return;
+        event.preventDefault();
+        return ui.setFullScreen(!ui.fullScreen);
+      }
       if (event.key === '/' && !command) {
         event.preventDefault();
         return focusSearch(navigate);

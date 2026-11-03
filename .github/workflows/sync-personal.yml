@@ -1,0 +1,120 @@
+# Keeps the personal branch up to date with kushagrasinghx/BitChord and
+# redeploys music.saliltimalsina.com.np.
+#
+# Upstream's main is merged into personal (never reset or rebased), so the
+# changes made here stay. Nothing is pushed or deployed unless the merge is
+# clean and typecheck, tests and build pass; otherwise an issue explains what
+# happened and personal is left as it was.
+name: Sync with upstream
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: sync-personal
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: personal
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: merge
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/kushagrasinghx/BitChord.git
+          git fetch --no-tags upstream main
+          if git merge-base --is-ancestor upstream/main HEAD; then
+            echo "Already up to date with upstream."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          before=$(git rev-parse HEAD)
+          echo "before=$before" >> "$GITHUB_OUTPUT"
+          echo "upstream=$(git rev-parse --short upstream/main)" >> "$GITHUB_OUTPUT"
+          if ! git merge --no-edit upstream/main; then
+            git diff --name-only --diff-filter=U > conflicts.txt
+            git merge --abort
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+          if git diff --quiet "$before" HEAD -- web/extension web/shared; then
+            echo "extension=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "extension=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: pnpm/action-setup@v4
+        if: steps.merge.outputs.changed == 'true'
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v4
+        if: steps.merge.outputs.changed == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install, typecheck, test, build
+        id: build
+        if: steps.merge.outputs.changed == 'true'
+        working-directory: web
+        env:
+          BITCHORD_SITE_ORIGINS: https://music.saliltimalsina.com.np,http://localhost:5173
+          VITE_PARTY_SERVER_URL: https://api.bitchord.kushagrasingh.in
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build:site
+          cp deploy/vercel.json app/dist/vercel.json
+
+      - name: Deploy to Vercel
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx --yes vercel@latest deploy web/app/dist --prod --yes --token "$VERCEL_TOKEN"
+
+      # Only now, with everything passing and live, does personal move.
+      - name: Push personal
+        if: steps.merge.outputs.changed == 'true'
+        run: git push origin HEAD:personal
+
+      - name: Remind to reload the extension
+        if: steps.merge.outputs.changed == 'true' && steps.merge.outputs.extension == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Reload the BitChord extension (upstream ${{ steps.merge.outputs.upstream }})" \
+            --body "Upstream changed the extension. The site is deployed; on your Mac run \`git pull && pnpm --dir web install && BITCHORD_SITE_ORIGINS=https://music.saliltimalsina.com.np,http://localhost:5173 pnpm --dir web/extension build\` on the personal branch, then click ↻ on BitChord in chrome://extensions."
+
+      - name: Report a problem
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.merge.outputs.conflict }}" = "true" ]; then
+            reason="Upstream's changes conflict with this branch in:"$'\n\n'"$(sed 's/^/- /' conflicts.txt)"$'\n\n'"Merge upstream/main into personal by hand to choose what to keep."
+          else
+            reason="The merge was clean, but install, typecheck, tests, the build or the deploy failed."
+          fi
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Upstream sync needs a hand (upstream ${{ steps.merge.outputs.upstream }})" \
+            --body "$reason"$'\n\n'"Nothing was pushed or deployed; personal and the site are as they were."$'\n\n'"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"

@@ -9,6 +9,12 @@ export VITE_PARTY_SERVER_URL="${VITE_PARTY_SERVER_URL:-https://api.bitchord.kush
 
 pnpm build:site
 cp deploy/vercel.json app/dist/vercel.json
-mkdir -p app/dist/.vercel
-cp deploy/vercel-project.json app/dist/.vercel/project.json
-vercel deploy app/dist --prod --yes
+
+# Deploy from the repository root with the project named outright, as the
+# deploy that works does: run from web/, the CLI eyed the deploy/ folder and
+# answered "Not authorized".
+VERCEL_ORG_ID="$(python3 -c "import json; print(json.load(open('deploy/vercel-project.json'))['orgId'])")"
+VERCEL_PROJECT_ID="$(python3 -c "import json; print(json.load(open('deploy/vercel-project.json'))['projectId'])")"
+export VERCEL_ORG_ID VERCEL_PROJECT_ID
+cd ..
+vercel deploy web/app/dist --prod --yes

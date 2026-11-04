@@ -54,7 +54,8 @@ export function PlayerBar() {
       data-panel-open={sidePanel !== null}
     >
       <div
-        className="glass-pill group/pill pointer-events-auto relative grid h-(--player-pill-height) w-[min(668px,100%)] grid-cols-[184px_minmax(0,427px)_auto] items-center rounded-pill px-4"
+        // 720px, not Apple's 668: this bar carries Sleep Timer and Full Screen too, and the title keeps room.
+        className="glass-pill group/pill pointer-events-auto relative grid h-(--player-pill-height) w-[min(720px,100%)] grid-cols-[184px_minmax(0,427px)_auto] items-center rounded-pill px-4"
         role="region"
         aria-label="Player"
       >

@@ -1,0 +1,99 @@
+# Builds this fork's own Android app from the personal branch, upstream's latest
+# plus this fork's features, and publishes it as a release here. The app's
+# in-app updater follows this fork's releases, so the installed personal build
+# updates itself whenever upstream or this fork moves on.
+#
+# Runs after the upstream sync pushes personal (it dispatches this workflow),
+# on any push to personal that touches the app, and by hand.
+#
+# The personal build is the dev flavor (com.dev.bitchord, "BitChord Dev"), so it
+# sits beside upstream's official app rather than replacing it. Release-built
+# (minified), so it runs as smoothly as the official one.
+#
+# Secrets (Settings → Secrets and variables → Actions):
+#   PERSONAL_KEYSTORE_BASE64, PERSONAL_KEYSTORE_PASSWORD,
+#   PERSONAL_KEY_ALIAS, PERSONAL_KEY_PASSWORD   — the signing key; every build
+#     must use the same one, or Android refuses to update over the last.
+#   LASTFM_API_KEY, LASTFM_SECRET               — optional, for scrobbling.
+name: Personal Android build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [personal]
+    paths:
+      - 'app/**'
+      - 'shared/**'
+      - 'sharedUi/**'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-personal
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: personal
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Signing key and local properties
+        env:
+          KEYSTORE_BASE64: ${{ secrets.PERSONAL_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.PERSONAL_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PERSONAL_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.PERSONAL_KEY_PASSWORD }}
+          LASTFM_API_KEY: ${{ secrets.LASTFM_API_KEY }}
+          LASTFM_SECRET: ${{ secrets.LASTFM_SECRET }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::PERSONAL_KEYSTORE_BASE64 is not set; see this workflow's header."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > personal-release.jks
+          {
+            echo "storeFile=personal-release.jks"
+            echo "storePassword=$KEYSTORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > keystore.properties
+          {
+            echo "LASTFM_API_KEY=$LASTFM_API_KEY"
+            echo "LASTFM_SECRET=$LASTFM_SECRET"
+          } > local.properties
+
+      - name: Test and build
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDevDebugUnitTest :app:assembleDevRelease \
+            -Pbitchord.personalBuild=${{ github.run_number }} \
+            -Pbitchord.updateRepo=${{ github.repository }}
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          dir=app/build/outputs/apk/dev/release
+          version=$(python3 -c "import json; print(json.load(open('$dir/output-metadata.json'))['elements'][0]['versionName'])")
+          # The updater picks the asset named like the app (BitChord-…) with no ABI suffix.
+          cp "$(ls $dir/*universal*.apk | head -1)" "BitChord-v$version.apk"
+          gh release create "v$version" "BitChord-v$version.apk" \
+            --target personal \
+            --title "BitChord personal $version" \
+            --notes "Built from personal at $(git rev-parse --short HEAD): upstream's latest plus this fork's features. Open BitChord Dev to update, or download the APK below." \
+            --latest

@@ -67,8 +67,14 @@ android {
         // Haze falls back to a translucent scrim below that.
         minSdk = 26
         targetSdk = 36
-        versionCode = rootProject.extra["bitchordVersionCode"] as Int
-        versionName = rootProject.extra["bitchordVersionName"] as String
+        // A personal build (this fork's CI, -Pbitchord.personalBuild=<run>) is
+        // numbered past the version it's built on, so each one updates the last
+        // even when upstream's version hasn't moved: 1.9 becomes 1.9.<run>.
+        val personalBuild = (findProperty("bitchord.personalBuild") as String?)?.toIntOrNull()
+        val baseCode = rootProject.extra["bitchordVersionCode"] as Int
+        val baseName = rootProject.extra["bitchordVersionName"] as String
+        versionCode = if (personalBuild != null) baseCode * 100_000 + personalBuild else baseCode
+        versionName = if (personalBuild != null) "$baseName.$personalBuild" else baseName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -84,6 +90,13 @@ android {
         // the same GitHub release, told apart by file name. See
         // AppUpdateChecker.apkAssetUrl.
         buildConfigField("String", "UPDATE_APK_PREFIX", "\"BitChord-\"")
+        // Whose GitHub releases the in-app updater follows: upstream's, or a
+        // fork's for its own builds (-Pbitchord.updateRepo=owner/repo).
+        buildConfigField(
+            "String",
+            "UPDATE_REPO",
+            "\"${(findProperty("bitchord.updateRepo") as String?) ?: "kushagrasinghx/BitChord"}\"",
+        )
     }
 
     splits {

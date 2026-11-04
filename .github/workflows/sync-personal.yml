@@ -15,6 +15,8 @@ on:
 permissions:
   contents: write
   issues: write
+  # To start the personal Android build once personal has moved.
+  actions: write
 
 concurrency:
   group: sync-personal
@@ -95,6 +97,14 @@ jobs:
       - name: Push personal
         if: steps.merge.outputs.changed == 'true'
         run: git push origin HEAD:personal
+
+      # A push made with this job's token doesn't start other workflows, so the
+      # Android build is asked for by name.
+      - name: Build the personal Android app
+        if: steps.merge.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run android-personal.yml --ref personal
 
       - name: Remind to reload the extension
         if: steps.merge.outputs.changed == 'true' && steps.merge.outputs.extension == 'true'

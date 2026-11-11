@@ -1375,4 +1375,15 @@
     <string name="bit_perfect_status_inexact">%1$s · non esatto: questa sorgente non è PCM lossless</string>
     <string name="bit_perfect_status_waiting">In attesa di un brano lossless su un\'uscita supportata</string>
     <string name="bit_perfect_status_unavailable">Non disponibile per questo brano (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">Le tue playlist</string>
+    <string name="select_songs">Seleziona</string>
+    <string name="find_a_playlist">Cerca una playlist</string>
+    <string name="no_playlists_match">Nessuna playlist corrisponde a “%1$s”</string>
+    <string name="removed_from_playlist_notice">Rimosso dalla playlist</string>
+    <plurals name="picked_songs_count">
+        <item quantity="one">%1$d brano</item>
+        <item quantity="many">%1$d brani</item>
+        <item quantity="other">%1$d brani</item>
+    </plurals>
 </resources>

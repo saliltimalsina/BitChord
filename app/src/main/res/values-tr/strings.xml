@@ -1393,4 +1393,14 @@
     <string name="bit_perfect_status_inexact">%1$s · tam değil: bu kaynak kayıpsız PCM değil</string>
     <string name="bit_perfect_status_waiting">Desteklenen bir çıkışta kayıpsız parça bekleniyor</string>
     <string name="bit_perfect_status_unavailable">Bu parça için kullanılamıyor (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">Çalma listelerin</string>
+    <string name="select_songs">Seç</string>
+    <string name="find_a_playlist">Çalma listesi bul</string>
+    <string name="no_playlists_match">“%1$s” ile eşleşen çalma listesi yok</string>
+    <string name="removed_from_playlist_notice">Çalma listesinden kaldırıldı</string>
+    <plurals name="picked_songs_count">
+        <item quantity="one">%1$d şarkı</item>
+        <item quantity="other">%1$d şarkı</item>
+    </plurals>
 </resources>

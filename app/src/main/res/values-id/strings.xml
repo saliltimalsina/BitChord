@@ -1413,4 +1413,13 @@
     <string name="bit_perfect_status_inexact">%1$s · tidak persis: sumber ini bukan PCM lossless</string>
     <string name="bit_perfect_status_waiting">Menunggu trek lossless pada output yang didukung</string>
     <string name="bit_perfect_status_unavailable">Tidak tersedia untuk trek ini (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">Playlist kamu</string>
+    <string name="select_songs">Pilih</string>
+    <string name="find_a_playlist">Cari playlist</string>
+    <string name="no_playlists_match">Tidak ada playlist yang cocok dengan “%1$s”</string>
+    <string name="removed_from_playlist_notice">Dihapus dari playlist</string>
+    <plurals name="picked_songs_count">
+        <item quantity="other">%1$d lagu</item>
+    </plurals>
 </resources>

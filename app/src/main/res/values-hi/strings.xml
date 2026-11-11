@@ -1436,4 +1436,14 @@
     <string name="bit_perfect_status_inexact">%1$s · सटीक नहीं: यह सोर्स लॉसलेस PCM नहीं है</string>
     <string name="bit_perfect_status_waiting">समर्थित आउटपुट पर लॉसलेस ट्रैक का इंतज़ार है</string>
     <string name="bit_perfect_status_unavailable">इस ट्रैक के लिए उपलब्ध नहीं (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">आपकी प्लेलिस्ट</string>
+    <string name="select_songs">चुनें</string>
+    <string name="find_a_playlist">प्लेलिस्ट खोजें</string>
+    <string name="no_playlists_match">“%1$s” से मेल खाती कोई प्लेलिस्ट नहीं</string>
+    <string name="removed_from_playlist_notice">प्लेलिस्ट से हटाया गया</string>
+    <plurals name="picked_songs_count">
+        <item quantity="one">%1$d गाना</item>
+        <item quantity="other">%1$d गाने</item>
+    </plurals>
 </resources>

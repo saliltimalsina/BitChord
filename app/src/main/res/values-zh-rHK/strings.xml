@@ -1413,4 +1413,13 @@
     <string name="download_addon_not_allowed">%1$s 不允許下載，因此你的歌曲將從其他來源儲存。</string>
     <string name="download_addon_needs_lossless_output">%1$s 僅在連接有線、USB 或 LDAC 等級耳機時提供音樂。在連接此類耳機前，下載會略過它，因此你的歌曲將從其他來源儲存。</string>
     <string name="source_downloads_on">允許下載</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">你的播放清單</string>
+    <string name="select_songs">選取</string>
+    <string name="find_a_playlist">尋找播放清單</string>
+    <string name="no_playlists_match">沒有符合「%1$s」的播放清單</string>
+    <string name="removed_from_playlist_notice">已從播放清單中移除</string>
+    <plurals name="picked_songs_count">
+        <item quantity="other">%1$d 首歌曲</item>
+    </plurals>
 </resources>

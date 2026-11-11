@@ -1413,4 +1413,13 @@
     <string name="bit_perfect_status_inexact">%1$s · 不精確：此音源不是無損 PCM</string>
     <string name="bit_perfect_status_waiting">正在等待受支援輸出上的無損曲目</string>
     <string name="bit_perfect_status_unavailable">此曲目無法使用（%1$s）</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">你的播放清單</string>
+    <string name="select_songs">選取</string>
+    <string name="find_a_playlist">尋找播放清單</string>
+    <string name="no_playlists_match">沒有符合「%1$s」的播放清單</string>
+    <string name="removed_from_playlist_notice">已從播放清單中移除</string>
+    <plurals name="picked_songs_count">
+        <item quantity="other">%1$d 首歌曲</item>
+    </plurals>
 </resources>

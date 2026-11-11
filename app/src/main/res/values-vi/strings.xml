@@ -1353,4 +1353,13 @@
     <string name="bit_perfect_status_inexact">%1$s · không chính xác: nguồn này không phải PCM lossless</string>
     <string name="bit_perfect_status_waiting">Đang chờ bản nhạc lossless trên đầu ra được hỗ trợ</string>
     <string name="bit_perfect_status_unavailable">Không khả dụng cho bản nhạc này (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">Danh sách phát của bạn</string>
+    <string name="select_songs">Chọn</string>
+    <string name="find_a_playlist">Tìm danh sách phát</string>
+    <string name="no_playlists_match">Không có danh sách phát nào khớp với “%1$s”</string>
+    <string name="removed_from_playlist_notice">Đã xóa khỏi danh sách phát</string>
+    <plurals name="picked_songs_count">
+        <item quantity="other">%1$d bài hát</item>
+    </plurals>
 </resources>

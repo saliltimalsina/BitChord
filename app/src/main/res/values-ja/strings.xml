@@ -1414,4 +1414,13 @@
     <string name="bit_perfect_status_inexact">%1$s · 正確ではありません： このソースはロスレス PCM ではありません</string>
     <string name="bit_perfect_status_waiting">対応する出力でロスレスのトラックを待っています</string>
     <string name="bit_perfect_status_unavailable">このトラックでは利用できません（%1$s）</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">あなたのプレイリスト</string>
+    <string name="select_songs">選択</string>
+    <string name="find_a_playlist">プレイリストを検索</string>
+    <string name="no_playlists_match">「%1$s」に一致するプレイリストはありません</string>
+    <string name="removed_from_playlist_notice">プレイリストから削除しました</string>
+    <plurals name="picked_songs_count">
+        <item quantity="other">%1$d曲</item>
+    </plurals>
 </resources>

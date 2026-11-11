@@ -1419,4 +1419,13 @@
     <string name="bit_perfect_status_inexact">%1$s · ไม่ตรงทุกบิต: แหล่งนี้ไม่ใช่ PCM แบบไม่สูญเสียคุณภาพ</string>
     <string name="bit_perfect_status_waiting">กำลังรอแทร็กแบบไม่สูญเสียคุณภาพบนเอาต์พุตที่รองรับ</string>
     <string name="bit_perfect_status_unavailable">ไม่พร้อมใช้งานสำหรับแทร็กนี้ (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">เพลย์ลิสต์ของคุณ</string>
+    <string name="select_songs">เลือก</string>
+    <string name="find_a_playlist">ค้นหาเพลย์ลิสต์</string>
+    <string name="no_playlists_match">ไม่มีเพลย์ลิสต์ที่ตรงกับ “%1$s”</string>
+    <string name="removed_from_playlist_notice">นำออกจากเพลย์ลิสต์แล้ว</string>
+    <plurals name="picked_songs_count">
+        <item quantity="other">%1$d เพลง</item>
+    </plurals>
 </resources>

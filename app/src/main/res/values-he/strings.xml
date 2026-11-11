@@ -1441,4 +1441,15 @@
     <string name="bit_perfect_status_inexact">%1$s · לא מדויק: המקור הזה אינו PCM ללא אובדן</string>
     <string name="bit_perfect_status_waiting">ממתין לרצועת Lossless ביציאה נתמכת</string>
     <string name="bit_perfect_status_unavailable">לא זמין עבור רצועה זו (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">הפלייליסטים שלך</string>
+    <string name="select_songs">בחירה</string>
+    <string name="find_a_playlist">חיפוש פלייליסט</string>
+    <string name="no_playlists_match">אין פלייליסטים שתואמים ל-„%1$s”</string>
+    <string name="removed_from_playlist_notice">הוסר מהפלייליסט</string>
+    <plurals name="picked_songs_count">
+        <item quantity="one">שיר אחד</item>
+        <item quantity="two">%1$d שירים</item>
+        <item quantity="other">%1$d שירים</item>
+    </plurals>
 </resources>

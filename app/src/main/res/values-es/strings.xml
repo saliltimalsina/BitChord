@@ -1408,4 +1408,15 @@
     <string name="bit_perfect_status_inexact">%1$s · no exacto: esta fuente no es PCM sin pérdida</string>
     <string name="bit_perfect_status_waiting">Esperando una pista sin pérdida en una salida compatible</string>
     <string name="bit_perfect_status_unavailable">No disponible para esta pista (%1$s)</string>
+    <string name="home_daylist">Daylist · Spotify</string>
+    <string name="home_your_playlists">Tus playlists</string>
+    <string name="select_songs">Seleccionar</string>
+    <string name="find_a_playlist">Buscar una playlist</string>
+    <string name="no_playlists_match">Ninguna playlist coincide con «%1$s»</string>
+    <string name="removed_from_playlist_notice">Quitada de la playlist</string>
+    <plurals name="picked_songs_count">
+        <item quantity="one">%1$d canción</item>
+        <item quantity="many">%1$d canciones</item>
+        <item quantity="other">%1$d canciones</item>
+    </plurals>
 </resources>

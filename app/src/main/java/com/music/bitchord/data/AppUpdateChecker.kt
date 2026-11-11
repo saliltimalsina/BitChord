@@ -80,7 +80,7 @@ object AppUpdateChecker {
             val apkUrl = apkAssetUrl(release)
             val notes = release["body"]?.jsonPrimitive?.contentOrNull
             val latest = tag.removePrefix("v")
-            if (isNewer(latest, BuildConfig.VERSION_NAME)) {
+            if (isNewerBuild(latest)) {
                 _available.value = UpdateInfo(latest, url, apkUrl, notes)
             }
         }
@@ -227,6 +227,20 @@ object AppUpdateChecker {
                         Intent.FLAG_ACTIVITY_NEW_TASK,
                 ),
         )
+    }
+
+    /**
+     * Whether the release tagged [latest] is newer than this build. A personal
+     * build (this fork's CI) is tagged "<upstream version>.<run>", and the run
+     * number alone orders those: it only ever goes up, while the upstream part
+     * can gain a digit and make names sort backwards (1.9.50 vs 1.9.1.51).
+     */
+    private fun isNewerBuild(latest: String): Boolean {
+        if (BuildConfig.PERSONAL_BUILD > 0) {
+            val run = latest.substringAfterLast('.').toIntOrNull() ?: return false
+            return run > BuildConfig.PERSONAL_BUILD
+        }
+        return isNewer(latest, BuildConfig.VERSION_NAME)
     }
 
     /** A version split into its numeric dotted parts and whether it carries a "-suffix" (e.g. "-beta2"). */

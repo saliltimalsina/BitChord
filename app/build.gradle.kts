@@ -87,6 +87,10 @@ android {
         val baseName = rootProject.extra["bitchordVersionName"] as String
         versionCode = if (personalBuild != null) baseCode * 100_000 + personalBuild else baseCode
         versionName = if (personalBuild != null) "$baseName.$personalBuild" else baseName
+        // The updater orders personal builds by this run number, not by name:
+        // names stop sorting once upstream's version gains a part (1.9.50 vs
+        // 1.9.1.51). 0 for every other build. See AppUpdateChecker.check.
+        buildConfigField("int", "PERSONAL_BUILD", (personalBuild ?: 0).toString())
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 

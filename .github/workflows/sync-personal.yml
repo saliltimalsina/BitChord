@@ -85,6 +85,24 @@ jobs:
           pnpm build:site
           cp deploy/vercel.json app/dist/vercel.json
 
+      # The Android app's unit tests too, so a merge that breaks the app (as a
+      # string without its translations did) never reaches personal, where it
+      # would only fail the Android build afterwards with nobody told.
+      - uses: actions/setup-java@v4
+        if: steps.merge.outputs.changed == 'true'
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.merge.outputs.changed == 'true'
+
+      - name: Android unit tests
+        if: steps.merge.outputs.changed == 'true'
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:testDevDebugUnitTest
+
       - name: Deploy to Vercel
         if: steps.merge.outputs.changed == 'true'
         env:
@@ -125,6 +143,10 @@ jobs:
           else
             reason="The merge was clean, but install, typecheck, tests, the build or the deploy failed."
           fi
+          body="$reason"$'\n\n'"Nothing was pushed or deployed; personal and the site are as they were."$'\n\n'"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          echo "$body" >> "$GITHUB_STEP_SUMMARY"
+          # With issues turned off on the repo, the run's failure email is the notice.
           gh issue create --repo "$GITHUB_REPOSITORY" \
             --title "Upstream sync needs a hand (upstream ${{ steps.merge.outputs.upstream }})" \
-            --body "$reason"$'\n\n'"Nothing was pushed or deployed; personal and the site are as they were."$'\n\n'"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            --body "$body" \
+            || echo "::warning::Couldn't open an issue (are issues enabled on this repo?)."

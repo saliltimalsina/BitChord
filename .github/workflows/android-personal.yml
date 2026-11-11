@@ -66,6 +66,15 @@ jobs:
             exit 1
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > personal-release.jks
+          # Android only updates an app with a build signed by the same key, so
+          # a different key here would publish a release no phone can install.
+          # This is the certificate of ~/.bitchord-personal/bitchord-personal.jks.
+          expected="B0:DB:2C:16:7A:81:32:6A:25:6C:1A:CB:E7:80:B3:B3:17:15:C7:1C:B6:62:68:8C:BD:35:45:C2:7E:44:AD:D6"
+          actual=$(keytool -list -v -keystore personal-release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | sed -n 's/^.*SHA256: //p' | head -1)
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::The signing key's certificate is $actual, not the personal key's $expected."
+            exit 1
+          fi
           {
             echo "storeFile=personal-release.jks"
             echo "storePassword=$KEYSTORE_PASSWORD"

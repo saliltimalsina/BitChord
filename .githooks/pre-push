@@ -1,0 +1,33 @@
+#!/bin/sh
+# A push to personal releases the Android app (android-personal.yml), so the
+# app's unit tests run here first: a failing one is found on this Mac in a
+# minute, not as a silent CI failure that leaves the phone without updates.
+#
+# Enable once per clone:  git config core.hooksPath .githooks
+# Skip once (knowingly):  git push --no-verify
+
+needs_tests=false
+while read -r local_ref local_sha remote_ref remote_sha; do
+  [ "$remote_ref" = "refs/heads/personal" ] || continue
+  [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    needs_tests=true
+  elif git diff --name-only "$remote_sha" "$local_sha" -- \
+      app shared sharedUi build.gradle.kts settings.gradle.kts gradle.properties gradle | grep -q .; then
+    needs_tests=true
+  fi
+done
+$needs_tests || exit 0
+
+# Gradle 8 can't run on the newest JDKs; prefer a 17 when one is installed.
+for jdk in /opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home \
+           "$(/usr/libexec/java_home -v 17 2>/dev/null)"; do
+  if [ -n "$jdk" ] && [ -x "$jdk/bin/java" ]; then export JAVA_HOME="$jdk"; break; fi
+done
+
+echo "pre-push: running the app's unit tests before personal is pushed…"
+if ! ./gradlew -q :app:testDevDebugUnitTest; then
+  echo "pre-push: tests failed, so personal wasn't pushed (and no broken release was attempted)." >&2
+  echo "          Report: app/build/reports/tests/testDevDebugUnitTest/index.html" >&2
+  exit 1
+fi

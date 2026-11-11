@@ -130,6 +130,16 @@ android {
             dimension = "env"
             applicationId = "com.dev.bitchord"
             resValue("string", "app_name", "BitChord Dev")
+            // Upstream's releases are the prod app (another package, another
+            // key), never an update for this one: following them installed the
+            // official app and left this one nagging forever. A dev build only
+            // checks for updates when it's told whose (this fork's CI passes
+            // -Pbitchord.updateRepo); a local build doesn't check at all.
+            buildConfigField(
+                "String",
+                "UPDATE_REPO",
+                "\"${(findProperty("bitchord.updateRepo") as String?).orEmpty()}\"",
+            )
         }
         create("prod") {
             dimension = "env"

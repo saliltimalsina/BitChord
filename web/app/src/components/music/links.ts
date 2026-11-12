@@ -1,4 +1,5 @@
 import type { BrowseLink, MusicItem } from '@/data/music/types';
+import type { QueueSource } from '@/playback/queue/timeline';
 
 /** Where tapping an item goes; null for songs and videos, which play instead. */
 export function hrefFor(item: Pick<MusicItem, 'kind' | 'id'>): string | null {
@@ -24,6 +25,29 @@ export function artistHref(id: string | null): string | null {
 
 export function albumHref(id: string | null): string | null {
   return id ? `/album/${encodeURIComponent(id)}` : null;
+}
+
+/**
+ * The page a queue was started from, for "Playing from …"; null where there is
+ * no page to go back to (search, home, a hand-built queue, a radio station).
+ */
+export function sourceHref(source: QueueSource | null | undefined): string | null {
+  const id = source?.id;
+  if (!id) return null;
+  switch (source.type) {
+    case 'album':
+      return albumHref(id);
+    case 'artist':
+      return artistHref(id);
+    case 'playlist':
+      return id.startsWith('spotify:')
+        ? `/spotify/playlist/${encodeURIComponent(id.slice('spotify:'.length))}`
+        : `/playlist/${encodeURIComponent(id)}`;
+    case 'library':
+      return `/library/${encodeURIComponent(id)}`;
+    default:
+      return null;
+  }
 }
 
 /** See All and mood/genre pages. Playlists open as playlists. */

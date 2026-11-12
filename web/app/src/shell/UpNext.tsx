@@ -3,7 +3,8 @@ import { Infinity as InfinityIcon, MoreHorizontal, X } from 'lucide-react';
 import { useCallback, useState } from 'react';
 import { Menu, MenuHeader, MenuItem, MenuSeparator } from '@/components/Menu';
 import { Artwork } from '@/components/music/Artwork';
-import { formatDuration } from '@/components/music/links';
+import { formatDuration, sourceHref } from '@/components/music/links';
+import { PrefetchLink } from '@/components/PrefetchLink';
 import { autoplaySectionStart, upcomingUserQueueIndices, type QueueEntry } from '@/playback/queue/timeline';
 import { CROSSFADE_CHOICES, usePlayer } from '@/state/player';
 
@@ -125,7 +126,9 @@ export function UpNext() {
   const upcoming = queue.map((entry, at) => ({ entry, at })).filter(({ at }) => at > index);
   const beforeAutoplay = upcoming.filter(({ at }) => at < autoplayAt);
   const afterAutoplay = upcoming.filter(({ at }) => at >= autoplayAt);
-  const playingFrom = queue[index]?.source?.title;
+  const playingSource = queue[index]?.source;
+  const playingFrom = playingSource?.title;
+  const playingFromHref = sourceHref(playingSource);
 
   const rows = (items: typeof upcoming) =>
     items.map(({ entry, at }) => (
@@ -177,7 +180,18 @@ export function UpNext() {
           </Menu>
         )}
       </div>
-      {playingFrom && <p className="truncate px-5 pb-2 type-callout text-secondary">Playing from {playingFrom}</p>}
+      {playingFrom && (
+        <p className="truncate px-5 pb-2 type-callout text-secondary">
+          Playing from{' '}
+          {playingFromHref ? (
+            <PrefetchLink to={playingFromHref} className="hover:text-primary hover:underline focus-visible:underline">
+              {playingFrom}
+            </PrefetchLink>
+          ) : (
+            playingFrom
+          )}
+        </p>
+      )}
 
       {upcoming.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 pb-20 text-center type-callout text-secondary">

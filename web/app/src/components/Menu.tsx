@@ -28,7 +28,10 @@ export function Menu({ anchor, placement = 'below-end', onClose, label, matchWid
   const [position, setPosition] = useState<React.CSSProperties>({ visibility: 'hidden' });
   // Menus sit under modals; one opened from inside a modal (a pop-up button in
   // a dialog) has to rise above it, or it opens behind the dialog.
-  const inModal = anchor instanceof HTMLElement && anchor.closest('[aria-modal="true"]') !== null;
+  // A right-click has no element to ask; one made while a modal is up was made
+  // inside it (the scrim takes every click outside), as in the ⌘K palette.
+  const inModal =
+    anchor instanceof HTMLElement ? anchor.closest('[aria-modal="true"]') !== null : document.querySelector('[aria-modal="true"]') !== null;
 
   useLayoutEffect(() => {
     if (!(anchor instanceof HTMLElement)) {

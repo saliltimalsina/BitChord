@@ -16,7 +16,7 @@ import {
   type NavIconProps,
 } from '@/components/icons/NavIcons';
 import { hrefFor } from '@/components/music/links';
-import { usePinMenu } from '@/components/music/PinMenu';
+import { useItemContextMenu } from '@/components/music/CollectionMenu';
 import { config } from '@/config';
 import { LIBRARY_SECTIONS, type LibrarySection } from '@/data/music/library';
 import { pinnedFirst } from '@/data/music/libraryView';
@@ -94,8 +94,8 @@ function NavList({ items, onNavigate }: { items: NavItem[]; onNavigate: () => vo
 
 /**
  * A playlist in the sidebar. While songs are dragged it lights up if they
- * can go into it, and dropping them there adds them all. Right-click pins it
- * to the top.
+ * can go into it, and dropping them there adds them all. Right-click opens
+ * its menu: play, queue, pin to the top, edit.
  */
 function PlaylistNavItem({
   playlist,
@@ -108,7 +108,7 @@ function PlaylistNavItem({
   addable: readonly { playlistId: string }[] | undefined;
   onNavigate: () => void;
 }) {
-  const pinMenu = usePinMenu(playlist);
+  const pinMenu = useItemContextMenu(playlist);
   const drag = useSongDrag((s) => s.current);
   const add = useAddToPlaylist();
   const [over, setOver] = useState(false);

@@ -34,17 +34,20 @@ export function EditPlaylistDialog({
   info,
   onClose,
   onDeleted,
+  startWithDelete = false,
 }: {
   playlistId: string;
   info: HeaderInfo;
   onClose: () => void;
   onDeleted: () => void;
+  /** Opened from Delete Playlist in a menu: straight to the confirmation, and Cancel closes. */
+  startWithDelete?: boolean;
 }) {
   const [title, setTitle] = useState(info.title);
   const [description, setDescription] = useState(info.description ?? '');
   const initialPrivacy = privacyOf(info.subtitle);
   const [privacy, setPrivacy] = useState<PlaylistPrivacy>(initialPrivacy);
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(startWithDelete);
   const edit = useEditPlaylist();
   const remove = useDeletePlaylist();
   const titleField = useRef<HTMLInputElement>(null);
@@ -104,7 +107,7 @@ export function EditPlaylistDialog({
             </p>
             {error && <p className="mt-3 type-callout text-[#ff6961]">{error.message}</p>}
             <div className="mt-5 flex justify-end gap-2">
-              <button className={secondary} onClick={() => setConfirmDelete(false)} disabled={busy}>
+              <button className={secondary} onClick={() => (startWithDelete ? onClose() : setConfirmDelete(false))} disabled={busy}>
                 Cancel
               </button>
               <button

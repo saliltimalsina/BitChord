@@ -33,7 +33,8 @@ export interface ListContext {
   fallbackArtists?: ArtistRef[] | undefined;
 }
 
-function prepared(tracks: Track[], { fallbackArtwork, fallbackArtists }: ListContext): Track[] {
+/** [tracks] with the list's artwork and artists filled in where a song has none. */
+export function prepared(tracks: Track[], { fallbackArtwork, fallbackArtists }: ListContext): Track[] {
   return tracks.map((t) => {
     const withArt = toTrack(t, fallbackArtwork);
     return withArt.artists.length || !fallbackArtists ? withArt : { ...withArt, artists: fallbackArtists };

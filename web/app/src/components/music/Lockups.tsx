@@ -5,6 +5,7 @@ import { Artwork } from './Artwork';
 import { ExplicitBadge } from './ExplicitBadge';
 import { artistHref, hrefFor } from './links';
 import { playTrack, toTrack } from './play';
+import { useItemContextMenu } from './CollectionMenu';
 import { TrackMenu, useTrackContextMenu } from './TrackMenu';
 
 const isPlayable = (item: MusicItem) => item.kind === 'song' || item.kind === 'video';
@@ -60,10 +61,8 @@ function PlayPlatter({ item }: { item: MusicItem }) {
 /** The artwork with its hover scrim, linking to the item or playing it. */
 function LockupArtwork({ item, width, aspect }: { item: MusicItem; width: number; aspect: number }) {
   const href = hrefFor(item);
-  const context = useTrackContextMenu(isPlayable(item) ? toTrack(item) : null);
   return (
-    <div className="group/art relative rounded-artwork-md" onContextMenu={context.onContextMenu}>
-      {context.menu}
+    <div className="group/art relative rounded-artwork-md">
       <Artwork src={item.thumbnail} displayWidth={width} aspect={aspect} radius="var(--radius-artwork-medium)" />
       {href ? (
         <PrefetchLink to={href} className={overlayLink} aria-label={item.title} />
@@ -88,8 +87,10 @@ function LockupArtwork({ item, width, aspect }: { item: MusicItem; width: number
 /** Square lockup (report §2): artwork, hover scrim with play platter, title and subtitle. */
 export function SquareLockup({ item, width = 220 }: { item: MusicItem; width?: number }) {
   const href = hrefFor(item);
+  const context = useItemContextMenu(item);
   return (
-    <div className={lockup}>
+    <div className={lockup} onContextMenu={context.onContextMenu}>
+      {context.menu}
       <LockupArtwork item={item} width={width} aspect={1} />
       <div className={caption}>
         <div className={title}>
@@ -112,8 +113,10 @@ export function SquareLockup({ item, width = 220 }: { item: MusicItem; width?: n
 
 /** 16:9 video lockup (report §2, type C). */
 export function VideoLockup({ item, width = 300 }: { item: MusicItem; width?: number }) {
+  const context = useItemContextMenu(item);
   return (
-    <div className={lockup}>
+    <div className={lockup} onContextMenu={context.onContextMenu}>
+      {context.menu}
       <LockupArtwork item={item} width={width} aspect={16 / 9} />
       <div className={caption}>
         <div className={title}>
@@ -128,8 +131,10 @@ export function VideoLockup({ item, width = 300 }: { item: MusicItem; width?: nu
 
 /** Circular artist lockup (report §2, type H). */
 export function CircleLockup({ item, width = 160 }: { item: MusicItem; width?: number }) {
+  const context = useItemContextMenu(item);
   return (
-    <PrefetchLink to={hrefFor(item) ?? '#'} className="group/circle flex min-w-0 flex-col items-center gap-2.5">
+    <PrefetchLink to={hrefFor(item) ?? '#'} className="group/circle flex min-w-0 flex-col items-center gap-2.5" onContextMenu={context.onContextMenu}>
+      {context.menu}
       <Artwork src={item.thumbnail} displayWidth={width} radius="50%" />
       <span className="max-w-full truncate text-center type-body group-hover/circle:underline">{item.title}</span>
     </PrefetchLink>

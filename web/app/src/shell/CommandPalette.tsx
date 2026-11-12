@@ -2,15 +2,20 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { CornerDownLeft, Loader2, Music2, Search, ThumbsUp } from 'lucide-react';
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
+import type { MenuPoint } from '@/components/Menu';
 import { Artwork } from '@/components/music/Artwork';
+import { CollectionContextMenu, MenuIsolation, runCollection } from '@/components/music/CollectionMenu';
+import { isCollection, loadCollection } from '@/components/music/collections';
 import { hrefFor } from '@/components/music/links';
-import { playList, playTrack } from '@/components/music/play';
+import { playList, playTrack, toTrack } from '@/components/music/play';
+import { TrackContextMenu } from '@/components/music/TrackMenu';
 import { LIKED_MUSIC_PLAYLIST } from '@/data/music/library';
-import { albumQuery, artistQuery, playlistQuery, searchQuery, useLibraryPlaylists, useSignedIn, useYouTubeReady } from '@/data/music/queries';
+import { searchQuery, useLibraryPlaylists, useSignedIn, useYouTubeReady } from '@/data/music/queries';
 import type { MusicItem } from '@/data/music/types';
 import { useSpotifyPlaylistSearch, useSpotifyPlaylists } from '@/data/spotify/queries';
-import { queryClient } from '@/lib/queryClient';
+import { usePlayer } from '@/state/player';
 import { useRecents, type RecentItem } from '@/state/recents';
+import { toast } from '@/state/toasts';
 import { useUi } from '@/state/ui';
 import { flattenResults, localMatches } from './paletteSearch';
 
@@ -59,6 +64,15 @@ function rememberSong(item: RecentItem) {
   useRecents.getState().remember({ ...item, subtitle: ['Song', artists].filter(Boolean).join(' • ') });
 }
 
+/** ⌘Enter: the song, or every song of the list, onto the end of the queue; the palette stays open for more. */
+function queueItem(item: RecentItem) {
+  if (playable(item)) {
+    usePlayer.getState().addToQueue([toTrack(asMusicItem(item))]);
+    return toast(`Added ${item.title} to the queue`);
+  }
+  if (isCollection(item)) void runCollection(item, 'queue');
+}
+
 /** Shift+Enter: start the list (or song) without opening its page. Falls back to opening it. */
 async function playNow(item: RecentItem, open: () => void) {
   try {
@@ -66,29 +80,11 @@ async function playNow(item: RecentItem, open: () => void) {
       rememberSong(item);
       return playTrack(asMusicItem(item));
     }
-    if (item.kind === 'playlist') {
-      const data = await queryClient.fetchInfiniteQuery(playlistQuery(item.id));
-      const first = data.pages[0];
-      const tracks = data.pages.flatMap((p) => p.tracks);
+    if (isCollection(item)) {
+      const { tracks, context } = await loadCollection(item);
       if (!tracks.length) return open();
       useRecents.getState().remember(item);
-      return playList(tracks, 0, { source: { title: first?.header?.title ?? item.title, type: 'playlist', id: item.id } });
-    }
-    if (item.kind === 'album') {
-      const album = await queryClient.fetchQuery(albumQuery(item.id));
-      if (!album.tracks.length) return open();
-      useRecents.getState().remember(item);
-      return playList(album.tracks, 0, {
-        source: { title: album.title, type: 'album', id: album.id },
-        fallbackArtwork: album.thumbnail,
-        fallbackArtists: album.artists,
-      });
-    }
-    if (item.kind === 'artist') {
-      const artist = await queryClient.fetchQuery(artistQuery(item.id));
-      if (!artist.topSongs.length) return open();
-      useRecents.getState().remember(item);
-      return playList(artist.topSongs, 0, { source: { title: `${artist.name}: Top Songs`, type: 'artist', id: artist.id } });
+      return playList(tracks, 0, context);
     }
     open();
   } catch {
@@ -156,6 +152,13 @@ function Palette({ closing }: { closing: boolean }) {
   // Nothing is selected until an arrow key (or the pointer) picks a row; Enter alone searches.
   const [active, setActive] = useState(-1);
   const [starting, setStarting] = useState<string | null>(null);
+  // A row's right-click menu, at the pointer. The item outlives the menu's
+  // point, so the Edit Playlist dialog it can open stays up once it closes.
+  const [menu, setMenu] = useState<{ item: RecentItem; at: MenuPoint | null } | null>(null);
+  const closeMenu = () => {
+    setMenu((m) => m && { ...m, at: null });
+    input.current?.focus({ preventScroll: true });
+  };
   // Where the pointer last was. Chrome sends mousemove when rows shift under a
   // still pointer (new results, scrolling); only a real move picks a row.
   const pointer = useRef<{ x: number; y: number } | null>(null);
@@ -251,8 +254,12 @@ function Palette({ closing }: { closing: boolean }) {
     close();
   };
 
-  const pick = (index: number, playIt: boolean) => {
+  const pick = (index: number, playIt: boolean, queueIt = false) => {
     if (starting || closing) return;
+    if (queueIt) {
+      const row = rows[index];
+      return row && queueItem(row.item);
+    }
     const row = rows[index];
     if (!row) {
       // No row picked: Enter runs the full search for what was typed.
@@ -274,7 +281,7 @@ function Palette({ closing }: { closing: boolean }) {
       setActive((i) => (rows.length ? (i <= -1 ? rows.length - 1 : i - 1) : -1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      pick(active, e.shiftKey);
+      pick(active, e.shiftKey, e.metaKey || e.ctrlKey);
     } else if (e.key === 'Escape') {
       e.preventDefault();
       e.stopPropagation();
@@ -357,7 +364,13 @@ function Palette({ closing }: { closing: boolean }) {
                       if (!selected) setActive(i);
                     }}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={(e) => pick(i, e.shiftKey)}
+                    onClick={(e) => pick(i, e.shiftKey, e.metaKey || e.ctrlKey)}
+                    onContextMenu={(e) => {
+                      if (!playable(item) && !isCollection(item)) return;
+                      e.preventDefault();
+                      setActive(i);
+                      setMenu({ item, at: { x: e.clientX, y: e.clientY } });
+                    }}
                   >
                     <Thumb item={item} />
                     <div className="flex min-w-0 flex-col">
@@ -385,12 +398,26 @@ function Palette({ closing }: { closing: boolean }) {
           <Hint keys={['↑', '↓']} label="to move" />
           <Hint keys={['Enter']} label={active < 0 && typing ? 'to search' : 'to open'} />
           <Hint keys={['Shift', 'Enter']} label="to play" />
+          <Hint keys={[MOD_KEY, 'Enter']} label="to queue" />
           <Hint keys={['Esc']} label="to close" />
         </div>
+        {menu &&
+          (playable(menu.item) ? (
+            menu.at && (
+              <MenuIsolation>
+                <TrackContextMenu track={toTrack(asMusicItem(menu.item))} at={menu.at} onClose={closeMenu} />
+              </MenuIsolation>
+            )
+          ) : (
+            <CollectionContextMenu item={menu.item} at={menu.at} onClose={closeMenu} />
+          ))}
       </div>
     </div>
   );
 }
+
+/** ⌘ on a Mac, Ctrl elsewhere, as the shortcut reads. */
+const MOD_KEY = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
 
 function Hint({ keys, label }: { keys: string[]; label: string }) {
   return (

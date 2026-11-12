@@ -20,7 +20,7 @@ import { toast, toastResult } from '@/state/toasts';
 import { filterPlaylists } from './playlistFilter';
 
 /** "a song" or "3 songs", for menus and toasts that act on a selection. */
-function songsLabel(count: number): string {
+export function songsLabel(count: number): string {
   return count === 1 ? 'a song' : `${count} songs`;
 }
 
@@ -31,7 +31,7 @@ const menuField =
  * Add to Playlist: a field to find one of the user's playlists by name, and
  * New Playlist, which names a new private playlist holding the song.
  */
-function PlaylistChoices({ videoIds, onDone, onBack }: { videoIds: string[]; onDone: () => void; onBack: () => void }) {
+export function PlaylistChoices({ videoIds, onDone, onBack }: { videoIds: string[]; onDone: () => void; onBack: () => void }) {
   const options = usePlaylistOptions(videoIds[0]!, true);
   const add = useAddToPlaylist();
   const create = useCreatePlaylist();
@@ -362,6 +362,15 @@ function TrackMenuItems({ track, onClose, onRemove }: { track: Track; onClose: (
         </>
       )}
     </>
+  );
+}
+
+/** One song's menu at a point, for callers that keep the point themselves (the ⌘K palette). */
+export function TrackContextMenu({ track, at, onClose }: { track: Track; at: MenuPoint; onClose: () => void }) {
+  return (
+    <Menu anchor={at} onClose={onClose} label={track.title}>
+      <TrackMenuItems track={track} onClose={onClose} />
+    </Menu>
   );
 }
 

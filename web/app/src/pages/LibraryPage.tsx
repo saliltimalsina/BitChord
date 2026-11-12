@@ -5,7 +5,7 @@ import { PrefetchLink } from '@/components/PrefetchLink';
 import { Artwork } from '@/components/music/Artwork';
 import { LibraryToolbar, useLibraryPrefs } from '@/components/music/LibraryToolbar';
 import { hrefFor } from '@/components/music/links';
-import { usePinMenu } from '@/components/music/PinMenu';
+import { useItemContextMenu } from '@/components/music/CollectionMenu';
 import { CircleLockup, SquareLockup, VideoLockup } from '@/components/music/Lockups';
 import { EmptyState, LoadError, LoadMoreError, NeedsExtension } from '@/components/music/States';
 import { TrackList } from '@/components/music/TrackList';
@@ -32,14 +32,9 @@ function useLoadMore(onVisible: (() => void) | null) {
   return target;
 }
 
-/** A playlist can be pinned to the sidebar from its right-click menu. */
-function pinnable(item: MusicItem) {
-  return item.kind === 'playlist' ? item : null;
-}
-
 /** The list layout's row: artwork, title, who made it. */
 function LibraryRow({ item }: { item: MusicItem }) {
-  const pinMenu = usePinMenu(pinnable(item));
+  const pinMenu = useItemContextMenu(item);
   const creator = creatorOf(item);
   return (
     <li onContextMenu={pinMenu.onContextMenu}>
@@ -58,12 +53,10 @@ function LibraryRow({ item }: { item: MusicItem }) {
   );
 }
 
-/** A grid lockup; playlists pin from their right-click menu. */
+/** A grid lockup; the lockup has its own right-click menu. */
 function GridItem({ item }: { item: MusicItem }) {
-  const pinMenu = usePinMenu(pinnable(item));
   return (
-    <li onContextMenu={pinMenu.onContextMenu}>
-      {pinMenu.menu}
+    <li>
       {item.kind === 'artist' ? <CircleLockup item={item} /> : item.wide ? <VideoLockup item={item} /> : <SquareLockup item={item} />}
     </li>
   );

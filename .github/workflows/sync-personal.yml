@@ -1,10 +1,17 @@
-# Keeps the personal branch up to date with kushagrasinghx/BitChord and
-# redeploys music.saliltimalsina.com.np.
+# Keeps the personal branch up to date with kushagrasinghx/BitChord, then has
+# the site (web-personal.yml) and the Android app (android-personal.yml) built
+# from it.
 #
-# Upstream's main is merged into personal (never reset or rebased), so the
-# changes made here stay. Nothing is pushed or deployed unless the merge is
-# clean and typecheck, tests and build pass; otherwise an issue explains what
-# happened and personal is left as it was.
+# What it follows: upstream works on a release branch (v1.9.2, …) for days or
+# weeks before merging it into main, so main alone left personal a release
+# behind. The newest vX.Y.Z branch is followed whenever it is ahead of main
+# (it contains main); otherwise main is. Set FOLLOW=main below to follow only
+# releases.
+#
+# Upstream is merged into personal (never reset or rebased), so the changes
+# made here stay. Nothing is pushed unless the merge is clean and the web
+# typecheck, tests and build and the Android unit tests pass; otherwise the run
+# fails, an issue says what happened, and personal is left as it was.
 name: Sync with upstream
 
 on:
@@ -15,12 +22,17 @@ on:
 permissions:
   contents: write
   issues: write
-  # To start the personal Android build once personal has moved.
+  # To start the personal site and Android builds once personal has moved.
   actions: write
 
 concurrency:
   group: sync-personal
   cancel-in-progress: false
+
+env:
+  # "release" follows upstream's newest release branch when it is ahead of
+  # main; "main" follows main only.
+  FOLLOW: release
 
 jobs:
   sync:
@@ -31,22 +43,34 @@ jobs:
           ref: personal
           fetch-depth: 0
 
-      - name: Merge upstream main
+      - name: Merge upstream
         id: merge
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/kushagrasinghx/BitChord.git
-          git fetch --no-tags upstream main
-          if git merge-base --is-ancestor upstream/main HEAD; then
-            echo "Already up to date with upstream."
+          git fetch --no-tags upstream '+refs/heads/*:refs/remotes/upstream/*'
+
+          target=upstream/main
+          if [ "$FOLLOW" = "release" ]; then
+            newest=$(git for-each-ref --format='%(refname:short)' 'refs/remotes/upstream/v*' \
+              | grep -E '^upstream/v[0-9]+(\.[0-9]+)*$' | sort -V | tail -1)
+            if [ -n "$newest" ] && git merge-base --is-ancestor upstream/main "$newest" \
+              && [ "$(git rev-parse "$newest")" != "$(git rev-parse upstream/main)" ]; then
+              target=$newest
+            fi
+          fi
+          echo "target=${target#upstream/}" >> "$GITHUB_OUTPUT"
+          echo "upstream=$(git rev-parse --short "$target")" >> "$GITHUB_OUTPUT"
+          echo "Following upstream ${target#upstream/} ($(git rev-parse --short "$target"))." >> "$GITHUB_STEP_SUMMARY"
+
+          if git merge-base --is-ancestor "$target" HEAD; then
+            echo "Already up to date with upstream ${target#upstream/}." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           before=$(git rev-parse HEAD)
-          echo "before=$before" >> "$GITHUB_OUTPUT"
-          echo "upstream=$(git rev-parse --short upstream/main)" >> "$GITHUB_OUTPUT"
-          if ! git merge --no-edit upstream/main; then
+          if ! git merge --no-edit -m "Merge upstream ${target#upstream/} into personal" "$target"; then
             git diff --name-only --diff-filter=U > conflicts.txt
             git merge --abort
             echo "conflict=true" >> "$GITHUB_OUTPUT"
@@ -71,8 +95,7 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
-      - name: Install, typecheck, test, build
-        id: build
+      - name: Web install, typecheck, test, build
         if: steps.merge.outputs.changed == 'true'
         working-directory: web
         env:
@@ -83,11 +106,9 @@ jobs:
           pnpm typecheck
           pnpm test
           pnpm build:site
-          cp deploy/vercel.json app/dist/vercel.json
 
       # The Android app's unit tests too, so a merge that breaks the app (as a
-      # string without its translations did) never reaches personal, where it
-      # would only fail the Android build afterwards with nobody told.
+      # string without its translations did) never reaches personal.
       - uses: actions/setup-java@v4
         if: steps.merge.outputs.changed == 'true'
         with:
@@ -103,26 +124,20 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon :app:testDevDebugUnitTest
 
-      - name: Deploy to Vercel
-        if: steps.merge.outputs.changed == 'true'
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-        run: npx --yes vercel@latest deploy web/app/dist --prod --yes --token "$VERCEL_TOKEN"
-
-      # Only now, with everything passing and live, does personal move.
+      # Only now, with everything passing, does personal move.
       - name: Push personal
         if: steps.merge.outputs.changed == 'true'
         run: git push origin HEAD:personal
 
       # A push made with this job's token doesn't start other workflows, so the
-      # Android build is asked for by name.
-      - name: Build the personal Android app
+      # site deploy and the Android build are asked for by name.
+      - name: Deploy the site and build the Android app
         if: steps.merge.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run android-personal.yml --ref personal
+        run: |
+          gh workflow run web-personal.yml --ref personal
+          gh workflow run android-personal.yml --ref personal
 
       - name: Remind to reload the extension
         if: steps.merge.outputs.changed == 'true' && steps.merge.outputs.extension == 'true'
@@ -130,8 +145,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "Reload the BitChord extension (upstream ${{ steps.merge.outputs.upstream }})" \
-            --body "Upstream changed the extension. The site is deployed; on your Mac run \`git pull && pnpm --dir web install && BITCHORD_SITE_ORIGINS=https://music.saliltimalsina.com.np,http://localhost:5173 pnpm --dir web/extension build\` on the personal branch, then click ↻ on BitChord in chrome://extensions."
+            --title "Reload the BitChord extension (upstream ${{ steps.merge.outputs.target }} ${{ steps.merge.outputs.upstream }})" \
+            --body "Upstream changed the extension. On your Mac run \`git pull && pnpm --dir web install && BITCHORD_SITE_ORIGINS=https://music.saliltimalsina.com.np,http://localhost:5173 pnpm --dir web/extension build\` on the personal branch, then click ↻ on BitChord in chrome://extensions." \
+            || echo "::warning::Couldn't open an issue (are issues enabled on this repo?)."
 
       - name: Report a problem
         if: failure()
@@ -139,14 +155,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ steps.merge.outputs.conflict }}" = "true" ]; then
-            reason="Upstream's changes conflict with this branch in:"$'\n\n'"$(sed 's/^/- /' conflicts.txt)"$'\n\n'"Merge upstream/main into personal by hand to choose what to keep."
+            reason="Upstream ${{ steps.merge.outputs.target }} conflicts with this branch in:"$'\n\n'"$(sed 's/^/- /' conflicts.txt)"$'\n\n'"Merge upstream/${{ steps.merge.outputs.target }} into personal by hand to choose what to keep."
           else
-            reason="The merge was clean, but install, typecheck, tests, the build or the deploy failed."
+            reason="The merge of upstream ${{ steps.merge.outputs.target }} was clean, but the web typecheck, tests or build, or the Android unit tests failed."
           fi
-          body="$reason"$'\n\n'"Nothing was pushed or deployed; personal and the site are as they were."$'\n\n'"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          body="$reason"$'\n\n'"Nothing was pushed; personal, the site and the app are as they were."$'\n\n'"Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           echo "$body" >> "$GITHUB_STEP_SUMMARY"
-          # With issues turned off on the repo, the run's failure email is the notice.
+          # The run still fails, so GitHub's failed-run email goes out either way.
           gh issue create --repo "$GITHUB_REPOSITORY" \
-            --title "Upstream sync needs a hand (upstream ${{ steps.merge.outputs.upstream }})" \
+            --title "Upstream sync needs a hand (upstream ${{ steps.merge.outputs.target }} ${{ steps.merge.outputs.upstream }})" \
             --body "$body" \
             || echo "::warning::Couldn't open an issue (are issues enabled on this repo?)."

@@ -1,0 +1,66 @@
+# Deploys music.saliltimalsina.com.np from the personal branch.
+#
+# Runs on any push to personal that touches the web player, so this fork's own
+# web changes go live on their own, and by dispatch from the upstream sync
+# (a push made with a workflow's token doesn't start other workflows).
+#
+# Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
+name: Personal site deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [personal]
+    paths:
+      - 'web/**'
+      - '.github/workflows/web-personal.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-personal
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: personal
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: web/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Install, typecheck, test, build
+        working-directory: web
+        env:
+          BITCHORD_SITE_ORIGINS: https://music.saliltimalsina.com.np,http://localhost:5173
+          VITE_PARTY_SERVER_URL: https://api.bitchord.kushagrasingh.in
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm build:site
+          cp deploy/vercel.json app/dist/vercel.json
+
+      - name: Deploy to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::VERCEL_TOKEN is not set; see this workflow's header."
+            exit 1
+          fi
+          npx --yes vercel@latest deploy web/app/dist --prod --yes --token "$VERCEL_TOKEN"
+          echo "Deployed personal at $(git rev-parse --short HEAD) to music.saliltimalsina.com.np" >> "$GITHUB_STEP_SUMMARY"

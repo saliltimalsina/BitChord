@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -93,6 +94,8 @@ import kotlinx.coroutines.launch
  * [song] is null when the flow started from the Library tab rather than from a
  * track, which is the one case where the header has no track to draw and
  * "New playlist" is the whole point of the sheet.
+ * [headerTitle] overrides the track title when the same preview represents an
+ * album; the song's artwork and artist remain the preview data.
  *
  * Playlists are ticked rather than picked: one track often belongs in more
  * than one list, and a sheet that closed on the first tap meant opening it
@@ -115,6 +118,7 @@ fun PlaylistPickerSheet(
     offline: Boolean = false,
     /** Several picked songs going in at once: the header counts them instead of showing [song]. */
     songCount: Int = 1,
+    headerTitle: String? = null,
 ) {
     var creating by remember { mutableStateOf(startCreating) }
     // By id rather than by value: the list is re-fetched under an open sheet,
@@ -123,6 +127,11 @@ fun PlaylistPickerSheet(
     // Find a playlist: narrows the list as it's typed. Ticks on playlists it
     // hides are kept, so a search can't quietly drop one already chosen.
     var query by remember { mutableStateOf("") }
+    // A keyed list holds on to the row it was showing, so narrowing or clearing
+    // the search left the list wherever that row now sits — mid-way down the
+    // full list after a clear. Each new query starts the list from its top.
+    val listState = rememberLazyListState()
+    LaunchedEffect(query) { listState.scrollToItem(0) }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -190,7 +199,7 @@ fun PlaylistPickerSheet(
                     )
                     HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
                 } else if (song != null) {
-                    SheetTrackHeader(song)
+                    SheetTrackHeader(song, title = headerTitle)
                     HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outline)
                 }
                 SheetHeading(
@@ -239,6 +248,7 @@ fun PlaylistPickerSheet(
                             )
                         }
                         LazyColumn(
+                            state = listState,
                             modifier = Modifier.weight(1f),
                             contentPadding = WindowInsets.navigationBars.asPaddingValues(),
                         ) {

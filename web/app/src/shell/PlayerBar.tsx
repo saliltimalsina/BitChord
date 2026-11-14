@@ -14,7 +14,7 @@ import {
 } from '@/components/icons/Transport';
 import { FavoriteButton } from '@/components/music/FavoriteButton';
 import { TrackMenu } from '@/components/music/TrackMenu';
-import { usePlayer } from '@/state/player';
+import { useIsPlaying, usePlayer } from '@/state/player';
 import { useUi } from '@/state/ui';
 import { DevicesButton, RemoteSpeakerTag } from './DevicesButton';
 import { Lcd } from './Lcd';
@@ -41,7 +41,7 @@ export function PlayerBar() {
     const entry = s.queue[s.index]?.track;
     return entry && entry.videoId === s.nowPlaying?.videoId ? entry : null;
   });
-  const playing = usePlayer((s) => s.status === 'playing' || s.status === 'buffering');
+  const playing = useIsPlaying();
   const hasNext = usePlayer((s) => s.index + 1 < s.queue.length || s.repeat !== 'off' || (s.autoplay && s.index >= 0));
   const shuffle = usePlayer((s) => s.shuffle);
   const repeat = usePlayer((s) => s.repeat);

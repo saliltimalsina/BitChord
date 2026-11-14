@@ -129,6 +129,8 @@ data class PartySnapshot(
      * the shared free-for-all this feature shipped as, rather than as locked.
      */
     val hostOnlyControl: Boolean = false,
+    /** "Your devices": one person's own devices, joined with a key rather than a code. */
+    val isHome: Boolean = false,
     val members: List<PartyMember> = emptyList(),
     val playback: PartyPlayback = PartyPlayback(),
     val queue: PartyQueue = PartyQueue(),
@@ -187,6 +189,8 @@ data class JoinRequest(
     val maxMembers: Int? = null,
     val autoplayEnabled: Boolean? = null,
     val deviceName: String? = null,
+    /** Set only when joining "Your devices" (POST /api/homes/join). */
+    val homeKey: String? = null,
 )
 
 @Serializable

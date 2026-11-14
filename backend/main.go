@@ -63,6 +63,11 @@ func main() {
 	mux.HandleFunc("GET /api/parties/{code}/preview", handlePreviewParty)
 	mux.HandleFunc("POST /api/parties/{code}/leave", handleLeaveParty)
 
+	// Your devices (Connect)
+	mux.HandleFunc("POST /api/homes/join", handleJoinHome)
+	mux.HandleFunc("POST /api/homes/pair", handleStartPairing)
+	mux.HandleFunc("POST /api/homes/pair/{code}", handleClaimPairing)
+
 	// Open-app counter
 	mux.HandleFunc("POST /api/presence", handlePresence)
 	mux.HandleFunc("GET /api/stats/live", handleLiveStats)
@@ -403,6 +408,11 @@ func handleCreateParty(w http.ResponseWriter, r *http.Request) {
 
 func handleJoinParty(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
+	// A home opens only with its key (handleJoinHome), never with its room name.
+	if party.IsHomeCode(codes.Normalise(code)) {
+		jsonError(w, http.StatusNotFound, "no_such_party", "No party with that code.")
+		return
+	}
 	var req protocol.JoinRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -462,6 +472,10 @@ func handleJoinParty(w http.ResponseWriter, r *http.Request) {
 // not release, allocates a short slice, and creates nothing.
 func handlePreviewParty(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
+	if party.IsHomeCode(codes.Normalise(code)) {
+		jsonError(w, http.StatusNotFound, "no_such_party", "No party with that code.")
+		return
+	}
 	p, err := store.Get(code)
 	if err != nil {
 		if pe, ok := err.(*party.PartyError); ok {
@@ -1022,6 +1036,17 @@ func applyControl(p *party.Party, member *party.Member, action string, frame map
 	if pos, ok := frame["positionMs"].(float64); ok {
 		pVal := int64(pos)
 		posPtr = &pVal
+	}
+
+	// In a home, the device that starts the music is where it plays, unless a
+	// speaker is already chosen and still here — so a phone picking a song while
+	// the laptop plays is a remote, and the first press anywhere just works.
+	if p.IsHome && (action == protocol.ActionPlay || action == protocol.ActionSetTrack || action == protocol.ActionNext || action == protocol.ActionPrevious) {
+		out := p.Playback.OutputMemberId
+		if out == nil || p.Members[*out] == nil || !p.Members[*out].Connected {
+			id := member.MemberId
+			p.Playback.OutputMemberId = &id
+		}
 	}
 
 	switch action {

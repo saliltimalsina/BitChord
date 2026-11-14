@@ -160,6 +160,8 @@ export function getAudio(): HTMLAudioElement | null {
  * underneath). The lyrics and the seek bars read this.
  */
 export function getPlayhead(): { sec: number; paused: boolean } | null {
+  // A remote (Connect) shows the speaker's playhead, not its own paused copy.
+  if (remotePlayhead) return remotePlayhead();
   const audio = getAudio();
   const { mixing, nowPlaying } = usePlayer.getState();
   if (mixing && graph && nowPlaying) {
@@ -167,6 +169,27 @@ export function getPlayhead(): { sec: number; paused: boolean } | null {
     if (sec !== null) return { sec, paused: false };
   }
   return audio ? { sec: audio.currentTime, paused: audio.paused } : null;
+}
+
+// ---- Connect: this tab as a remote for another device in the session ----
+
+/**
+ * While another device in the session plays, this tab is a remote: its own
+ * player holds the track paused, and what it shows — play state, seek bar,
+ * lyrics — is the speaker's. partySync keeps this current.
+ */
+export const useRemotePlayback = create<{ active: boolean; playing: boolean }>()(() => ({ active: false, playing: false }));
+
+let remotePlayhead: (() => { sec: number; paused: boolean }) | null = null;
+export function setRemotePlayhead(read: (() => { sec: number; paused: boolean }) | null): void {
+  remotePlayhead = read;
+}
+
+/** Playing or about to, here or — on a remote — on the speaker. What play/pause buttons draw. */
+export function useIsPlaying(): boolean {
+  const local = usePlayer((s) => s.status === 'playing' || s.status === 'buffering');
+  const remote = useRemotePlayback();
+  return remote.active ? remote.playing : local;
 }
 
 /** The running Automix blend's beat (phase 0 on the beat), for the seek bar's pulse; null between blends. */
@@ -424,6 +447,10 @@ export interface PartyHooks {
   shouldDeferPlay(): boolean;
   /** A listener in a host-locked party: play/pause is theirs alone. True when handled. */
   onLockedTransport(playing: boolean): boolean;
+  /** A remote (Connect): play/pause goes to the speaker. True when handled. */
+  remoteTransport(): boolean;
+  /** A remote (Connect): the seek goes to the speaker. True when handled. */
+  remoteSeek(seconds: number): boolean;
   /** In a party, AutoPlay is the party's: one elected member tops up the shared queue. */
   inParty(): boolean;
 }
@@ -558,6 +585,8 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
     const audio = getAudio();
     const { nowPlaying, status, index } = get();
     if (!nowPlaying) return;
+    // A remote: the press moves the speaker, and this tab's player stays as it is.
+    if (partyHooks?.remoteTransport()) return;
     const resuming = !audio || audio.paused || status === 'error';
     // A routed graph left suspended (no gesture when it was built) would play silence.
     if (resuming) void graph?.ctx.resume();
@@ -577,6 +606,7 @@ export const usePlayer = create<PlayerState>()((set, get) => ({
   },
 
   seek(seconds) {
+    if (partyHooks?.remoteSeek(seconds)) return;
     const audio = getAudio();
     if (!audio) return;
     cancelCrossfade();

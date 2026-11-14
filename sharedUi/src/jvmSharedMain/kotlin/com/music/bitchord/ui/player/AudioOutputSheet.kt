@@ -131,7 +131,7 @@ internal fun AudioOutputSheet(
                 WatchRow(watch = watch, onClick = { PlayerPlatform.host.selectWatchOutput() })
             }
             if (cast.supported) CastRow(cast = cast, onClick = onOpenCast)
-            if (party.inParty && party.supportsOutput) SessionDevices(party)
+            if ((party.inParty || party.isHome) && party.supportsOutput) SessionDevices(party)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -522,7 +522,7 @@ private fun SessionDevices(party: PartyUi) {
     val others = party.members.filter { it.memberId != party.you?.memberId }
     if (others.isEmpty()) return
     Text(
-        text = "In this session",
+        text = if (party.isHome) "Your devices" else "In this session",
         style = MaterialTheme.typography.labelMedium,
         color = Color.White.copy(alpha = 0.55f),
         modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 2.dp),
@@ -538,6 +538,7 @@ private fun SessionDevices(party: PartyUi) {
             onClick = { PlayerPlatform.host.selectPartyOutput(member.memberId) },
         )
     }
+    if (party.isHome) return
     SessionDeviceRow(
         title = "Every device",
         subtitle = if (party.outputMemberId == null) "Playing everywhere, in sync" else "Everyone hears it, in sync",

@@ -21,7 +21,7 @@ import { MotionArtwork } from '@/components/music/MotionArtwork';
 import { VideoSurface } from '@/components/music/VideoSurface';
 import { useTrackMotion } from '@/data/apple/motionArt';
 import { sizedArtwork } from '@/lib/artwork';
-import { usePlayer } from '@/state/player';
+import { useIsPlaying, usePlayer } from '@/state/player';
 import { useUi } from '@/state/ui';
 import { useHasVideo, useVideo } from '@/state/video';
 import { Credits, PageLink, pageLink } from './Lcd';
@@ -102,7 +102,7 @@ const skip = `${transportButton} size-12 text-primary`;
 /** Shuffle, previous, play/pause, next, repeat. No volume: the pill keeps that. */
 function Transport() {
   const hasTrack = usePlayer((s) => s.nowPlaying !== null);
-  const playing = usePlayer((s) => s.status === 'playing' || s.status === 'buffering');
+  const playing = useIsPlaying();
   const hasNext = usePlayer((s) => s.index + 1 < s.queue.length || s.repeat !== 'off' || (s.autoplay && s.index >= 0));
   const shuffle = usePlayer((s) => s.shuffle);
   const repeat = usePlayer((s) => s.repeat);
@@ -165,7 +165,7 @@ export function FullScreenPlayer() {
   const motion = useTrackMotion(nowPlaying?.title, nowPlaying?.artist, track?.album?.name);
   const { pathname } = useLocation();
   const openedAt = useRef(pathname);
-  const playing = usePlayer((s) => s.status === 'playing' || s.status === 'buffering');
+  const playing = useIsPlaying();
   const setFullScreen = useUi((s) => s.setFullScreen);
   const video = useHasVideo(nowPlaying?.videoId);
   // The right-hand column: the lyrics, Up Next, or nothing. Lyrics toggle bottom left, Up Next bottom right.

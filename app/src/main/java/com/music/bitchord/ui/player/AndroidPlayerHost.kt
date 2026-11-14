@@ -284,7 +284,9 @@ private fun AudioOutputStatus.Snapshot.toOutputFormat(bitPerfect: BitPerfectOutp
 }
 
 private fun ListenTogether.State.toPartyUi() = PartyUi(
-    inParty = inParty,
+    // A home is not a party to the player: no jam caption, no member badge.
+    inParty = inParty && !isHome,
+    isHome = isHome,
     controlsLocked = controlsLocked,
     members = members,
     you = you,

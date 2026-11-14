@@ -2,10 +2,12 @@ package party
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/KabirSinghBhatia/BitChord/backend/clock"
@@ -554,7 +556,11 @@ type Party struct {
 	// seconds. It travels with MaxMembers on the members frame instead, which
 	// is only sent when something about the membership actually changes.
 	HostOnlyControl bool
-	CreatedAtMs     int64
+	// IsHome marks "Your devices": one person's own devices, joined with a
+	// secret key rather than a code (see GetOrCreateHome). It is never aged out
+	// like a party, and starting playback makes the starting device the speaker.
+	IsHome      bool
+	CreatedAtMs int64
 	TouchedAtMs     int64
 	EmptySinceMs    *int64
 }
@@ -780,7 +786,7 @@ func (p *Party) ExpiredMembers(now int64) []*Member {
 }
 
 func (p *Party) IsExpired(now int64) bool {
-	if now-p.CreatedAtMs > config.PartyMaxAgeMs {
+	if !p.IsHome && now-p.CreatedAtMs > config.PartyMaxAgeMs {
 		return true
 	}
 	if p.EmptySinceMs != nil {
@@ -809,6 +815,7 @@ func (p *Party) ToWire() map[string]interface{} {
 		"createdAtMs":     p.CreatedAtMs,
 		"maxMembers":      p.MaxMembers,
 		"hostOnlyControl": p.HostOnlyControl,
+		"isHome":          p.IsHome,
 		"members":         membersWire,
 		"playback":        p.Playback.ToWire(now),
 		"queue":           p.Playback.QueueToWire(),
@@ -878,6 +885,37 @@ func (s *PartyStore) CreateWithLimits(maxParties, maxMembers int) (*Party, error
 		}
 	}
 	return nil, NewPartyError(503, "code_exhausted", "Could not allocate a party code.")
+}
+
+// HomeCode is the room a home key opens: a hash, so the key itself is never a
+// map key, never logged, and never sent back to anybody.
+func HomeCode(homeKey string) string {
+	sum := sha256.Sum256([]byte("bitchord-home:" + homeKey))
+	return "H" + strings.ToUpper(hex.EncodeToString(sum[:10]))
+}
+
+// IsHomeCode tells a home's room from a party's six-character one.
+func IsHomeCode(code string) bool {
+	return len(code) == 21 && code[0] == 'H'
+}
+
+// GetOrCreateHome opens the home a key names, creating it on first use (or
+// again after it emptied and was swept — a home holds no state worth keeping
+// across that).
+func (s *PartyStore) GetOrCreateHome(homeKey string, maxParties int) (*Party, error) {
+	code := HomeCode(homeKey)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if p, ok := s.parties[code]; ok {
+		return p, nil
+	}
+	if maxParties > 0 && len(s.parties) >= maxParties {
+		return nil, NewPartyError(503, "server_full", "The party server is busy. Please try again in a few minutes.")
+	}
+	p := NewPartyWithMaxMembers(code, 10)
+	p.IsHome = true
+	s.parties[code] = p
+	return p, nil
 }
 
 func (s *PartyStore) Get(code string) (*Party, error) {

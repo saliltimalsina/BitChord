@@ -65,6 +65,8 @@ export interface PartySnapshot {
   createdAtMs: number;
   maxMembers: number;
   hostOnlyControl: boolean;
+  /** "Your devices": this person's own devices, joined by key rather than code. */
+  isHome: boolean;
   members: PartyMember[];
   playback: PartyPlayback;
   queue: PartyQueue;
@@ -166,6 +168,7 @@ export function snapshotOf(raw: Partial<PartySnapshot>): PartySnapshot {
     createdAtMs: raw.createdAtMs ?? 0,
     maxMembers: raw.maxMembers ?? 5,
     hostOnlyControl: raw.hostOnlyControl ?? false,
+    isHome: raw.isHome ?? false,
     members: (raw.members ?? []).map(memberOf),
     playback: playbackOf(raw.playback),
     queue: queueOf(raw.queue),

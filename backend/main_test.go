@@ -35,6 +35,9 @@ func setupTestServer() *httptest.Server {
 	mux.HandleFunc("GET /api/stats/live/badge.svg", handleLiveBadge)
 	mux.HandleFunc("GET /invite/{code}", handleInviteLanding)
 	mux.HandleFunc("GET /ws/parties/{code}", handleWebSocket)
+	mux.HandleFunc("POST /api/homes/join", handleJoinHome)
+	mux.HandleFunc("POST /api/homes/pair", handleStartPairing)
+	mux.HandleFunc("POST /api/homes/pair/{code}", handleClaimPairing)
 
 	return httptest.NewServer(corsMiddleware(mux))
 }
@@ -620,4 +623,83 @@ func TestSetOutputOverTheWire(t *testing.T) {
 			return
 		}
 	}
+}
+
+// Your devices: a phone pairs with the laptop's code, both land in the same
+// home, the device that starts the music becomes the speaker, and the other
+// device's controls don't take it away. A home can't be joined by its room name.
+func TestHomePairingAndSpeaker(t *testing.T) {
+	ts := setupTestServer()
+	defer ts.Close()
+	post := func(path string, body interface{}) (int, map[string]interface{}) {
+		b, _ := json.Marshal(body)
+		res, err := http.Post(ts.URL+path, "application/json", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]interface{}
+		_ = json.NewDecoder(res.Body).Decode(&out)
+		return res.StatusCode, out
+	}
+	key := "laptop-made-this-key-0123456789abcdef"
+	ident := func(device, name string) map[string]string {
+		return map[string]string{"homeKey": key, "userId": "u", "deviceId": device, "displayName": "Me", "deviceName": name}
+	}
+
+	_, laptop := post("/api/homes/join", ident("laptop", "Chrome on macOS"))
+	code := laptop["code"].(string)
+
+	_, pair := post("/api/homes/pair", map[string]string{"homeKey": key})
+	status, claim := post("/api/homes/pair/"+pair["code"].(string), nil)
+	if status != 200 || claim["homeKey"] != key {
+		t.Fatalf("claim = %d %v", status, claim)
+	}
+	if status, _ := post("/api/homes/pair/"+pair["code"].(string), nil); status != 404 {
+		t.Fatalf("a pairing code must be single-use, got %d", status)
+	}
+	_, phone := post("/api/homes/join", ident("phone", "Pixel 8 Pro"))
+	if phone["code"] != code {
+		t.Fatal("paired devices must share one home")
+	}
+	if status, _ := post("/api/parties/"+code+"/join", ident("stranger", "x")); status != 404 {
+		t.Fatalf("a home must not open by its room name, got %d", status)
+	}
+
+	dial := func(token string) *websocket.Conn {
+		u, _ := url.Parse(ts.URL)
+		u.Scheme, u.Path = "ws", "/ws/parties/"+code
+		ws, _, err := websocket.DefaultDialer.Dial(u.String(), http.Header{"Authorization": {"Bearer " + token}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ws
+	}
+	laptopWS, phoneWS := dial(laptop["token"].(string)), dial(phone["token"].(string))
+	defer laptopWS.Close()
+	defer phoneWS.Close()
+	laptopId := laptop["you"].(map[string]interface{})["memberId"].(string)
+
+	awaitOutput := func(ws *websocket.Conn, want string) {
+		t.Helper()
+		for i := 0; i < 20; i++ {
+			_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+			var f map[string]interface{}
+			if err := ws.ReadJSON(&f); err != nil {
+				t.Fatalf("no state with output %s: %v", want, err)
+			}
+			if f["type"] == protocol.FrameState && f["playback"].(map[string]interface{})["outputMemberId"] == want {
+				return
+			}
+		}
+		t.Fatalf("no state with output %s", want)
+	}
+
+	track := map[string]interface{}{"videoId": "abc", "title": "Song"}
+	_ = laptopWS.WriteJSON(map[string]interface{}{"type": "control", "action": "setTrack", "track": track})
+	awaitOutput(phoneWS, laptopId)
+
+	// The phone, as a remote, pauses and resumes: the laptop stays the speaker.
+	_ = phoneWS.WriteJSON(map[string]interface{}{"type": "control", "action": "pause"})
+	_ = phoneWS.WriteJSON(map[string]interface{}{"type": "control", "action": "play"})
+	awaitOutput(laptopWS, laptopId)
 }

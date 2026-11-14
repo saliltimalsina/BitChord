@@ -364,6 +364,8 @@ data class PartyUi(
     val outputMemberId: String? = null,
     /** False on a party server too old to pick one device; the picker hides. */
     val supportsOutput: Boolean = false,
+    /** "Your devices" (Connect) rather than a party; [inParty] is false for it. */
+    val isHome: Boolean = false,
 ) {
     /** The device making the sound when it is not this one. */
     val remoteSpeaker: PartyMember?

@@ -1,6 +1,6 @@
 import type { Track } from '@/data/music/types';
 import type { QueueTier } from '@/playback/queue/timeline';
-import { getAudio, partyPlayer, setPartyHooks, setSilencedForRemote, usePlayer } from '@/state/player';
+import { getAudio, partyPlayer, setPartyHooks, setRemotePlayhead, setSilencedForRemote, usePlayer, useRemotePlayback } from '@/state/player';
 import { controlsLocked, msUntilStart, outputElsewhere, party, partyPositionMs, useParty, type PartyState } from './listenTogether';
 import type { PartyTrack } from './models';
 import { autoplaySupplierId, detectSingleMove, partyQueueIndexOf, partyUpcomingAfter } from './queueReading';
@@ -132,7 +132,12 @@ function publish(): void {
   const track = toPartyTrack(entry.track, entry.tier, audio && Number.isFinite(audio.duration) ? audio.duration * 1000 : 0);
   const position = positionMs();
   // During a deferred resume the player isn't going yet; what the user asked for is.
-  const wantsPlaying = state.awaitingStart || playWhenReady();
+  // A remote holds its player paused and sends play/pause to the speaker directly,
+  // so what it "wants" is the session's state — except a newly chosen song.
+  const remote = outputElsewhere(state);
+  const wantsPlaying = remote
+    ? state.playback.isPlaying || state.playback.track?.videoId !== track.videoId
+    : state.awaitingStart || playWhenReady();
   const basePlayback = state.playback.seq;
   const baseQueue = state.queue.seq;
   let playbackControls = 0;
@@ -178,8 +183,9 @@ function publish(): void {
     if (wantsPlaying) party.play(position);
     else party.pause(position);
     playbackControls++;
-  } else {
+  } else if (!remote) {
     // Same track, same state: a seek, unless it barely moved (two devices finishing a track together).
+    // (A remote's own playhead is a paused copy; its seeks reach the speaker through remoteSeek.)
     const partyPosition = partyPositionMs();
     if (partyPosition === null || Math.abs(position - partyPosition) > SEEK_REPORT_FLOOR_MS) {
       party.seek(position);
@@ -196,6 +202,7 @@ function publish(): void {
 function shouldDeferPlay(): boolean {
   const state = useParty.getState();
   if (!state.code || state.connection !== 'live' || !state.clockSynced) return false;
+  if (outputElsewhere(state)) return false;
   if (playWhenReady()) return false;
   setAwaiting(true);
   clearTimeout(startTimer);
@@ -225,6 +232,22 @@ function onLockedTransport(playing: boolean): boolean {
   return true;
 }
 
+/** A remote (Connect): play/pause moves the speaker. */
+function remoteTransport(): boolean {
+  const state = useParty.getState();
+  if (!outputElsewhere(state)) return false;
+  if (state.playback.isPlaying) party.pause(partyPositionMs() ?? undefined);
+  else party.play();
+  return true;
+}
+
+/** A remote (Connect): a seek moves the speaker. */
+function remoteSeek(seconds: number): boolean {
+  if (!outputElsewhere()) return false;
+  party.seek(Math.max(0, seconds * 1000));
+  return true;
+}
+
 // ---- Inbound -------------------------------------------------------------------------
 
 function reconcile(): void {
@@ -250,6 +273,14 @@ function reconcile(): void {
   if (loadingVideoId === track.videoId && usePlayer.getState().status === 'loading') return;
   loadingVideoId = null;
   reconcileQueue(state);
+
+  // A remote (Connect): the track and queue are kept, for the screen and a later
+  // handover, but this player stays paused; it shows the speaker's clock instead.
+  if (outputElsewhere(state)) {
+    setAwaiting(false);
+    if (playWhenReady()) partyPlayer.pause();
+    return;
+  }
 
   if (locallyPaused) {
     setAwaiting(false);
@@ -326,7 +357,7 @@ function load(state: PartyState): void {
   const at = partyQueueIndexOf(state.queue, state.playback, track.videoId);
   const items = at >= 0 ? state.queue.items : [track];
   const startMs = partyPositionMs() ?? state.playback.positionMs;
-  const play = state.playback.isPlaying && state.clockSynced && msUntilStart() <= 0;
+  const play = state.playback.isPlaying && state.clockSynced && msUntilStart() <= 0 && !outputElsewhere(state);
   void partyPlayer
     .load(items.map(fromPartyTrack), items.map(tierOf), Math.max(0, at), startMs / 1000, play)
     .finally(() => {
@@ -440,11 +471,20 @@ export function startPartySync(): () => void {
     onIntent,
     shouldDeferPlay,
     onLockedTransport,
+    remoteTransport,
+    remoteSeek,
     inParty: () => !!useParty.getState().code,
   });
   let key = '';
   const off = useParty.subscribe((state) => {
-    setSilencedForRemote(outputElsewhere(state));
+    const remote = outputElsewhere(state);
+    setSilencedForRemote(remote);
+    if (useRemotePlayback.getState().active !== remote || useRemotePlayback.getState().playing !== state.playback.isPlaying) {
+      useRemotePlayback.setState({ active: remote, playing: state.playback.isPlaying });
+    }
+    setRemotePlayhead(
+      remote ? () => ({ sec: (partyPositionMs() ?? useParty.getState().playback.positionMs) / 1000, paused: !useParty.getState().playback.isPlaying }) : null,
+    );
     const next = `${state.playback.seq}|${state.queue.seq}|${state.code}|${state.clockSynced}`;
     if (next === key) return;
     key = next;
@@ -466,6 +506,8 @@ export function startPartySync(): () => void {
   return () => {
     off();
     setSilencedForRemote(false);
+    setRemotePlayhead(null);
+    useRemotePlayback.setState({ active: false, playing: false });
     clearInterval(tick);
     clearTimeout(publishTimer);
     clearTimeout(startTimer);

@@ -235,6 +235,8 @@ class PartySync(
                 // what puts it back. Idempotent — it returns immediately when a
                 // socket is already up, or when there is no party.
                 if (ListenTogether.state.value.inParty) ListenTogether.ensureConnected()
+                // Your devices: back into the home whenever paired and in nothing else.
+                else ListenTogether.ensureHome()
                 reconcile()
             }
         }
@@ -429,6 +431,8 @@ class PartySync(
     fun shouldDeferPlay(): Boolean {
         val party = ListenTogether.state.value
         if (!party.inParty || party.connection != ListenTogether.Connection.LIVE) return false
+        // A remote: play goes to the speaker (PartySpeaker), and this player never starts.
+        if (party.outputElsewhere) return false
         if (!party.clockSynced) return false
         // Already going, so there is nothing to hold back: `play()` on a player
         // that never stopped does nothing anywhere, and swallowing it here made
@@ -528,6 +532,15 @@ class PartySync(
         }
         loadingVideoId = null
         reconcileQueue(party, exo)
+
+        // A remote (Connect): the track and queue are kept so the screen, the
+        // notification and a later handover all have them, but this player
+        // stays silent and paused — [PartySpeaker] reports the speaker's clock.
+        if (party.outputElsewhere) {
+            deferredPlayPending = false
+            if (exo.playWhenReady) exo.pause()
+            return
+        }
 
         // Muted by its own listener while the party plays on. Everything above
         // this line still applies — the track the party moved to is loaded, the
@@ -753,7 +766,15 @@ class PartySync(
         val position = exo.currentPosition.coerceAtLeast(0L)
         // What the user asked for, which during a deferred resume is not what
         // the player is doing yet — that is the whole point of the deferral.
-        val wantsPlaying = deferredPlayPending || exo.playWhenReady
+        // On a remote the local player is held paused and play/pause go to the
+        // speaker directly, so what this device "wants" is the session's state —
+        // except a newly chosen song, which is chosen to be heard.
+        val remote = party.outputElsewhere
+        val wantsPlaying = if (remote) {
+            party.playback.isPlaying || party.playback.track?.videoId != track.videoId
+        } else {
+            deferredPlayPending || exo.playWhenReady
+        }
         val basePlayback = party.playback.seq
         val baseQueue = party.queue.seq
         var playbackControls = 0
@@ -850,6 +871,9 @@ class PartySync(
             // the party already on the new track and would otherwise publish its
             // own position as a seek — which drags the first device, which
             // republishes, and so on. Nobody asked for any of it.
+            // A remote's own playhead is a paused copy, not a position anyone
+            // chose; its seeks reach the speaker directly through PartySpeaker.
+            remote -> Unit
             else -> {
                 val partyPosition = ListenTogether.partyPositionMs()
                 if (partyPosition == null || abs(position - partyPosition) > SEEK_REPORT_FLOOR_MS) {

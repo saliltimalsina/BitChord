@@ -103,6 +103,11 @@ android {
         // the updater installs the TV app here, never the phone app. See
         // AppUpdateChecker.apkAssetUrl.
         buildConfigField("String", "UPDATE_APK_PREFIX", "\"BitChordTV-\"")
+        // The phone's update checker, which TV builds from, follows a repo and
+        // orders personal builds by run number (app/build.gradle.kts). TV
+        // follows upstream's releases and is never a personal build.
+        buildConfigField("String", "UPDATE_REPO", "\"kushagrasinghx/BitChord\"")
+        buildConfigField("int", "PERSONAL_BUILD", "0")
     }
 
     splits {

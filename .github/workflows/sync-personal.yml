@@ -122,7 +122,9 @@ jobs:
         if: steps.merge.outputs.changed == 'true'
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDevDebugUnitTest
+          # The TV app builds from the phone's sources, so it's compiled too:
+          # a phone-only change that leaves it unbuildable shows here.
+          ./gradlew --no-daemon :app:testDevDebugUnitTest :tv:compileDevDebugKotlin
 
       # Only now, with everything passing, does personal move.
       - name: Push personal

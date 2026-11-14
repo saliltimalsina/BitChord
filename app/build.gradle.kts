@@ -120,9 +120,17 @@ android {
         )
     }
 
+    // -Pbitchord.abis=arm64-v8a (this fork's personal build) compiles and ships
+    // only those ABIs as one APK: far quicker to build and to download. Without
+    // it, the usual per-ABI splits plus a universal APK.
+    val onlyAbis = (findProperty("bitchord.abis") as String?)
+        ?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
+    if (onlyAbis != null) {
+        defaultConfig { ndk { abiFilters.clear(); abiFilters += onlyAbis } }
+    }
     splits {
         abi {
-            isEnable = true
+            isEnable = onlyAbis == null
             reset()
             include("armeabi-v7a", "arm64-v8a", "x86_64")
             isUniversalApk = true

@@ -92,7 +92,8 @@ jobs:
           ./gradlew --no-daemon :app:testDevDebugUnitTest :app:assembleDevRelease \
             -Pbitchord.personalBuild=${{ github.run_number }} \
             -Pbitchord.updateRepo=${{ github.repository }} \
-            -Pbitchord.appName=BitChord
+            -Pbitchord.appName=BitChord \
+            -Pbitchord.abis=arm64-v8a
 
       - name: Publish the release
         env:
@@ -101,7 +102,10 @@ jobs:
           dir=app/build/outputs/apk/dev/release
           version=$(python3 -c "import json; print(json.load(open('$dir/output-metadata.json'))['elements'][0]['versionName'])")
           # The updater picks the asset named like the app (BitChord-…) with no ABI suffix.
-          cp "$(ls $dir/*universal*.apk | head -1)" "BitChord-v$version.apk"
+          # One APK when built for arm64 only (bitchord.abis), else the universal one.
+          apk=$(ls $dir/*universal*.apk 2>/dev/null | head -1)
+          [ -n "$apk" ] || apk=$(ls $dir/*.apk | head -1)
+          cp "$apk" "BitChord-v$version.apk"
           # The tag carries no "-beta1": installed builds read the run number
           # from the tag's last dotted part, and before the fix in
           # AppUpdateChecker.isNewerBuild a suffix there hid every update.

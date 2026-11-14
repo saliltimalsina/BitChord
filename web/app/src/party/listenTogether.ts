@@ -67,10 +67,6 @@ export interface PartyState {
   activity: PartyActivity[];
   /** A resume this device accepted but may not perform yet (partySync owns it). */
   awaitingStart: boolean;
-  /** The server can pick one device to play (Connect); an older one sends no outputMemberId. */
-  supportsOutput: boolean;
-  /** In "Your devices" (a home) rather than a Listen Together party. */
-  isHome: boolean;
 }
 
 const IDLE: PartyState = {
@@ -87,20 +83,9 @@ const IDLE: PartyState = {
   error: null,
   activity: [],
   awaitingStart: false,
-  supportsOutput: false,
-  isHome: false,
 };
 
-/** Whether a raw snapshot or state frame came from a server that knows about output devices. */
-const knowsOutput = (raw: unknown): boolean => !!raw && typeof raw === 'object' && 'outputMemberId' in raw;
-
 export const useParty = create<PartyState>()(() => IDLE);
-
-/** True when another device in the session is the speaker and this one is a remote. */
-export function outputElsewhere(state: PartyState = useParty.getState()): boolean {
-  const out = state.playback.outputMemberId;
-  return !!state.code && !!out && out !== state.you?.memberId;
-}
 
 /** True for a listener in a party whose host has taken control of it. */
 export function controlsLocked(state: PartyState = useParty.getState()): boolean {
@@ -159,14 +144,6 @@ function deviceId(): string {
   return id;
 }
 
-/** What the device picker calls this browser: "Chrome on macOS". */
-function deviceName(): string {
-  const ua = navigator.userAgent;
-  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
-  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS X/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '';
-  return os ? `${browser} on ${os}` : browser;
-}
-
 async function sha256(value: string): Promise<string> {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -186,7 +163,6 @@ async function identity(): Promise<Omit<JoinRequest, 'maxMembers' | 'autoplayEna
     userId: (await sha256(`${active.authUser}:${active.id}`)).slice(0, 32),
     deviceId: deviceId(),
     displayName: name,
-    deviceName: deviceName(),
     avatarUrl: active.avatarUrl?.startsWith('http') ? active.avatarUrl : null,
   };
 }
@@ -228,8 +204,6 @@ function adoptMembership(base: string, membership: PartyMembership): string {
     queue: party.queue,
     connection: 'connecting',
     activity: useParty.getState().activity,
-    supportsOutput: knowsOutput((membership.party as { playback?: unknown }).playback),
-    isHome: party.isHome,
   });
   connect();
   return membership.code;
@@ -327,110 +301,6 @@ export function resumeSession(): void {
   }
 }
 
-// ---- Your devices (Connect) ------------------------------------------------------------------
-//
-// A home is one person's own devices, always connected while open, so any of
-// them can see what another plays and take it over. It opens with a secret key
-// held by each paired device (never sent anywhere but the party server); a new
-// device gets it by claiming a short pairing code another device shows.
-
-const HOME_KEY = 'bitchord:homeKey';
-const HOME_RETRY_MS = 15_000;
-
-function readHomeKey(): string | null {
-  try {
-    return localStorage.getItem(HOME_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeHomeKey(key: string | null): void {
-  try {
-    if (key) localStorage.setItem(HOME_KEY, key);
-    else localStorage.removeItem(HOME_KEY);
-  } catch {
-    // Private mode: the pairing lasts as long as the tab.
-  }
-}
-
-/** Whether this browser is paired into "Your devices". */
-export function hasHome(): boolean {
-  return readHomeKey() !== null;
-}
-
-let joiningHome: Promise<void> | null = null;
-
-/** Joins "Your devices" when paired and in nothing else. Safe to call any time. */
-export function ensureHome(): Promise<void> {
-  const key = readHomeKey();
-  if (!key || useParty.getState().code || joiningHome) return joiningHome ?? Promise.resolve();
-  joiningHome = (async () => {
-    try {
-      const base = idleServer();
-      const membership = await request<PartyMembership>(`${base}/api/homes/join`, {
-        method: 'POST',
-        body: JSON.stringify({ ...(await identity()), homeKey: key }),
-      });
-      // Something else (a party) was joined meanwhile: it wins; give the slot back.
-      if (useParty.getState().code) {
-        void releaseSlot(base, membership.code, membership.token);
-        return;
-      }
-      adoptMembership(base, membership);
-    } catch {
-      // Not signed in yet, or the server is waking up: the timer tries again.
-    } finally {
-      joiningHome = null;
-    }
-  })();
-  return joiningHome;
-}
-
-/** Keeps this browser in "Your devices" while it's paired. Returns the stop. */
-export function startHomeKeeper(): () => void {
-  void ensureHome();
-  const timer = setInterval(() => void ensureHome(), HOME_RETRY_MS);
-  return () => clearInterval(timer);
-}
-
-function newHomeKey(): string {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-/** Shows a code another device can enter to join "Your devices" (pairing this one first if needed). */
-export async function startPairing(): Promise<{ code: string; expiresAtMs: number }> {
-  let key = readHomeKey();
-  if (!key) {
-    key = newHomeKey();
-    writeHomeKey(key);
-    if (useParty.getState().code && !useParty.getState().isHome) await leaveParty();
-    await ensureHome();
-  }
-  return request<{ code: string; expiresAtMs: number }>(`${idleServer()}/api/homes/pair`, {
-    method: 'POST',
-    body: JSON.stringify({ homeKey: key }),
-  });
-}
-
-/** Joins "Your devices" with a code shown on another of this person's devices. */
-export async function claimPairing(rawCode: string): Promise<void> {
-  const code = cleanCode(rawCode);
-  if (!code) throw new PartyError('bad_code', `A pairing code is ${CODE_LENGTH} letters or digits.`);
-  const { homeKey } = await request<{ homeKey: string }>(`${idleServer()}/api/homes/pair/${code}`, { method: 'POST' });
-  writeHomeKey(homeKey);
-  if (useParty.getState().code) await leaveParty();
-  await ensureHome();
-}
-
-/** Unpairs this browser from "Your devices". */
-export async function forgetHome(): Promise<void> {
-  writeHomeKey(null);
-  if (useParty.getState().isHome) await leaveParty();
-}
-
 export function partyServer(): string | null {
   return server;
 }
@@ -486,8 +356,6 @@ export const party = {
   kick: (memberId: string) => control('kick', { memberId }),
   setAutoplay: (enabled: boolean) => control('setAutoplay', { enabled }),
   setHostOnlyControl: (enabled: boolean) => control('setHostOnlyControl', { enabled }),
-  /** Moves the sound to one member's device (null: back to every device playing). */
-  setOutput: (memberId: string | null) => control('setOutput', { memberId }),
 };
 
 // ---- The playhead ------------------------------------------------------------------
@@ -592,11 +460,8 @@ async function checkMembership(): Promise<void> {
     const response = await fetch(`${server}/api/parties/${code}`, { headers: { Authorization: `Bearer ${token}` } });
     if (response.status === 401 || response.status === 404) {
       const why = await errorOf(response);
-      const wasHome = useParty.getState().isHome;
       await leaveParty();
-      // A home the server forgot (a restart) is simply opened again with the key.
-      if (wasHome) void ensureHome();
-      else useParty.setState({ error: why.status === 404 ? 'That party has ended.' : why.message });
+      useParty.setState({ error: why.status === 404 ? 'That party has ended.' : why.message });
     }
   } catch {
     // Unreachable: keep trying.
@@ -641,8 +506,6 @@ function onFrame(text: string): void {
         queue: party.queue,
         connection: 'live',
         error: null,
-        supportsOutput: knowsOutput((frame.party as { playback?: unknown }).playback),
-        isHome: party.isHome,
       });
       break;
     }
@@ -658,7 +521,7 @@ function onFrame(text: string): void {
       const playback = playbackOf(frame.playback as never);
       // Older than what's applied: two controllers pressing at once settle instead of fighting.
       if (playback.seq < state.playback.seq) return;
-      useParty.setState({ playback, supportsOutput: knowsOutput(frame.playback) });
+      useParty.setState({ playback });
       // A missed queue frame is healed on the next heartbeat rather than lived with.
       if (playback.queueSeq !== useParty.getState().queue.seq) send({ type: 'syncQueue' });
       break;
@@ -670,8 +533,7 @@ function onFrame(text: string): void {
       break;
     }
     case 'members': {
-      // Join order, whatever order an older server sends them in: pickers mustn't reshuffle.
-      const members = ((frame.members as unknown[]) ?? []).map((m) => memberOf(m as never)).sort((a, b) => a.joinedAtMs - b.joinedAtMs);
+      const members = ((frame.members as unknown[]) ?? []).map((m) => memberOf(m as never));
       const maxMembers = typeof frame.maxMembers === 'number' ? frame.maxMembers : state.maxMembers;
       // Absent on an older server: keep what's held, so an upgrade doesn't silently unlock a party.
       const hostOnlyControl = typeof frame.hostOnlyControl === 'boolean' ? frame.hostOnlyControl : state.hostOnlyControl;

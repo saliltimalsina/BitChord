@@ -63,11 +63,6 @@ func main() {
 	mux.HandleFunc("GET /api/parties/{code}/preview", handlePreviewParty)
 	mux.HandleFunc("POST /api/parties/{code}/leave", handleLeaveParty)
 
-	// Your devices (Connect)
-	mux.HandleFunc("POST /api/homes/join", handleJoinHome)
-	mux.HandleFunc("POST /api/homes/pair", handleStartPairing)
-	mux.HandleFunc("POST /api/homes/pair/{code}", handleClaimPairing)
-
 	// Open-app counter
 	mux.HandleFunc("POST /api/presence", handlePresence)
 	mux.HandleFunc("GET /api/stats/live", handleLiveStats)
@@ -391,7 +386,6 @@ func handleCreateParty(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "server_error", err.Error())
 		return
 	}
-	m.DeviceName = req.DeviceName
 	partyWire := p.ToWire()
 	youWire := m.ToWire()
 	token := m.Token
@@ -408,11 +402,6 @@ func handleCreateParty(w http.ResponseWriter, r *http.Request) {
 
 func handleJoinParty(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
-	// A home opens only with its key (handleJoinHome), never with its room name.
-	if party.IsHomeCode(codes.Normalise(code)) {
-		jsonError(w, http.StatusNotFound, "no_such_party", "No party with that code.")
-		return
-	}
 	var req protocol.JoinRequest
 	if !decodeJSONBody(w, r, &req) {
 		return
@@ -443,7 +432,6 @@ func handleJoinParty(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "server_error", err.Error())
 		return
 	}
-	m.DeviceName = req.DeviceName
 	partyWire := p.ToWire()
 	youWire := m.ToWire()
 	token := m.Token
@@ -472,10 +460,6 @@ func handleJoinParty(w http.ResponseWriter, r *http.Request) {
 // not release, allocates a short slice, and creates nothing.
 func handlePreviewParty(w http.ResponseWriter, r *http.Request) {
 	code := r.PathValue("code")
-	if party.IsHomeCode(codes.Normalise(code)) {
-		jsonError(w, http.StatusNotFound, "no_such_party", "No party with that code.")
-		return
-	}
 	p, err := store.Get(code)
 	if err != nil {
 		if pe, ok := err.(*party.PartyError); ok {
@@ -1038,20 +1022,6 @@ func applyControl(p *party.Party, member *party.Member, action string, frame map
 		posPtr = &pVal
 	}
 
-	// In a home, the device that starts the music is where it plays, unless a
-	// speaker is already chosen and still here — so a phone picking a song while
-	// the laptop plays is a remote, and the first press anywhere just works.
-	// A play with nothing loaded claims nothing: there is no music to put anywhere yet.
-	startsMusic := action == protocol.ActionSetTrack || action == protocol.ActionNext || action == protocol.ActionPrevious ||
-		(action == protocol.ActionPlay && p.Playback.Track != nil)
-	if p.IsHome && startsMusic {
-		out := p.Playback.OutputMemberId
-		if out == nil || p.Members[*out] == nil || !p.Members[*out].Connected {
-			id := member.MemberId
-			p.Playback.OutputMemberId = &id
-		}
-	}
-
 	switch action {
 	case protocol.ActionPlay:
 		p.Playback.Play(&member.MemberId, posPtr)
@@ -1200,18 +1170,6 @@ func applyControl(p *party.Party, member *party.Member, action string, frame map
 		p.Playback.SetAutoplay(&member.MemberId, enabled)
 		return true, "", ""
 
-	case protocol.ActionSetOutput:
-		var output *string
-		if raw, present := frame["memberId"]; present && raw != nil {
-			id, ok := raw.(string)
-			if !ok || p.Members[id] == nil {
-				return false, "invalid_member", "That device is no longer in this session."
-			}
-			output = &id
-		}
-		p.Playback.SetOutput(&member.MemberId, output)
-		return true, "", ""
-
 	case protocol.ActionSetHostOnlyControl:
 		enabled, ok := frame["enabled"].(bool)
 		if !ok {
@@ -1281,7 +1239,6 @@ func activityFrame(member *party.Member, action string, frame map[string]interfa
 	case protocol.ActionKick: detail = "Removed a listener from the party"
 	case protocol.ActionSetMaxMembers: detail = "Changed the party size"
 	case protocol.ActionSetAutoplay: detail = "Changed AutoPlay"
-	case protocol.ActionSetOutput: detail = "Moved playback to another device"
 	}
 	return map[string]interface{}{"type": protocol.FrameActivity, "action": action, "by": member.DisplayName, "detail": detail, "atMs": clock.NowMs()}
 }
@@ -1295,15 +1252,8 @@ func queueFrame(p *party.Party) map[string]interface{} {
 }
 
 func membersFrame(p *party.Party) map[string]interface{} {
-	// In join order, as the snapshot is: a map's order changes between frames,
-	// and device pickers drawn from it would swap rows under a finger.
-	ordered := make([]*party.Member, 0, len(p.Members))
+	membersList := make([]map[string]interface{}, 0, len(p.Members))
 	for _, m := range p.Members {
-		ordered = append(ordered, m)
-	}
-	sort.Slice(ordered, func(i, j int) bool { return ordered[i].JoinedAtMs < ordered[j].JoinedAtMs })
-	membersList := make([]map[string]interface{}, 0, len(ordered))
-	for _, m := range ordered {
 		membersList = append(membersList, m.ToWire())
 	}
 	return map[string]interface{}{

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect } from 'react';
-import { resumeSession, startHomeKeeper } from '@/party/listenTogether';
+import { resumeSession } from '@/party/listenTogether';
 import { startPartySync } from '@/party/partySync';
 import { useDiscordPresence } from '@/playback/discordPresence';
 import { startHistoryReporting } from '@/playback/historyReporting';
@@ -36,13 +36,7 @@ export function AppShell() {
   // Listen Together: pick a party back up after a reload, and keep the player in step with it.
   useEffect(() => {
     resumeSession();
-    const stopSync = startPartySync();
-    // Your devices: stay connected to this person's other devices while paired.
-    const stopHome = startHomeKeeper();
-    return () => {
-      stopHome();
-      stopSync();
-    };
+    return startPartySync();
   }, []);
   // Plays into the account's YouTube Music history (Settings › Share Listening Activity).
   useEffect(() => startHistoryReporting(), []);

@@ -19,8 +19,6 @@ export interface PartyMember {
   memberId: string;
   userId: string;
   displayName: string;
-  /** "Pixel 8 Pro", "Chrome on macOS"; empty from an older client. */
-  deviceName: string;
   avatarUrl: string | null;
   isHost: boolean;
   /** Holding a socket right now, not whether they are still in. */
@@ -49,8 +47,6 @@ export interface PartyPlayback {
   startedBy: string | null;
   startedByName: string | null;
   autoplayEnabled: boolean;
-  /** The one member whose device makes the sound (Connect); null means every device plays. */
-  outputMemberId: string | null;
   updatedAtMs: number;
 }
 
@@ -65,8 +61,6 @@ export interface PartySnapshot {
   createdAtMs: number;
   maxMembers: number;
   hostOnlyControl: boolean;
-  /** "Your devices": this person's own devices, joined by key rather than code. */
-  isHome: boolean;
   members: PartyMember[];
   playback: PartyPlayback;
   queue: PartyQueue;
@@ -102,7 +96,6 @@ export interface JoinRequest {
   userId: string;
   deviceId: string;
   displayName: string;
-  deviceName?: string;
   avatarUrl?: string | null;
   maxMembers?: number;
   autoplayEnabled?: boolean;
@@ -122,7 +115,6 @@ export const EMPTY_PLAYBACK: PartyPlayback = {
   startedBy: null,
   startedByName: null,
   autoplayEnabled: false,
-  outputMemberId: null,
   updatedAtMs: 0,
 };
 
@@ -153,7 +145,6 @@ export function memberOf(raw: Partial<PartyMember>): PartyMember {
     memberId: raw.memberId ?? '',
     userId: raw.userId ?? '',
     displayName: raw.displayName ?? '',
-    deviceName: raw.deviceName ?? '',
     avatarUrl: raw.avatarUrl ?? null,
     isHost: raw.isHost ?? false,
     connected: raw.connected ?? false,
@@ -168,7 +159,6 @@ export function snapshotOf(raw: Partial<PartySnapshot>): PartySnapshot {
     createdAtMs: raw.createdAtMs ?? 0,
     maxMembers: raw.maxMembers ?? 5,
     hostOnlyControl: raw.hostOnlyControl ?? false,
-    isHome: raw.isHome ?? false,
     members: (raw.members ?? []).map(memberOf),
     playback: playbackOf(raw.playback),
     queue: queueOf(raw.queue),

@@ -191,7 +191,7 @@ class LoudnessProcessor {
         reduction = gr
     }
 
-    private fun targetGain(): Float = if (RemoteOutput.silenced) 0f else mediaId?.let { runCatching { gainFor(it) }.getOrNull() } ?: 1f
+    private fun targetGain(): Float = mediaId?.let { runCatching { gainFor(it) }.getOrNull() } ?: 1f
 
     private fun coefficient(seconds: Double, rate: Int): Float =
         if (rate <= 0) 1f else (1.0 - exp(-1.0 / (seconds * rate))).toFloat()

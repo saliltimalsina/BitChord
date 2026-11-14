@@ -769,10 +769,7 @@ class PlaybackService : MediaLibraryService() {
     }
 
     /** Every remote speaker, as the one the session player reports. */
-    private val speakers by lazy { Speakers(listOf(castPlayback, watchSpeaker, partySpeaker)) }
-
-    /** Another device in the Listen Together session as the speaker (Connect). See [PartySpeaker]. */
-    private val partySpeaker by lazy { PartySpeaker(scope) }
+    private val speakers by lazy { Speakers(listOf(castPlayback, watchSpeaker)) }
 
     /**
      * Binds playback to a Listen Together party, when there is one.

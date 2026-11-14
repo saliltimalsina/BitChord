@@ -11,7 +11,7 @@ import type { SourceState } from '@/lyrics/repository';
 import { enabledSources } from '@/lyrics/settings';
 import { sourceById, type LyricsSourceId } from '@/lyrics/sources';
 import { useLyrics, useLyricsUi } from '@/lyrics/useLyrics';
-import { getAudio, getPlayhead, useIsPlaying, usePlayer } from '@/state/player';
+import { getAudio, getPlayhead, usePlayer } from '@/state/player';
 import { LyricsSettings } from './LyricsSettings';
 
 type AmLyricsElement = HTMLElement & {
@@ -339,7 +339,7 @@ function PermissionNotice({ origins }: { origins: string[] }) {
 function CanvasBackdrop({ url }: { url: string }) {
   const video = useRef<HTMLVideoElement>(null);
   const [ready, setReady] = useState(false);
-  const playing = useIsPlaying();
+  const playing = usePlayer((s) => s.status === 'playing' || s.status === 'buffering');
   useEffect(() => setReady(false), [url]);
   useEffect(() => {
     const el = video.current;

@@ -25,11 +25,8 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Earbuds
 import androidx.compose.material.icons.rounded.GraphicEq
-import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Headphones
-import androidx.compose.material.icons.rounded.Laptop
 import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Speaker
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Usb
@@ -95,9 +92,6 @@ internal fun AudioOutputSheet(
     val outputs = rememberAudioOutputs()
     val cast by PlayerPlatform.host.castState.collectAsStateWithLifecycle()
     val watch by PlayerPlatform.host.watchOutput.collectAsStateWithLifecycle()
-    val party by PlayerPlatform.host.party.collectAsStateWithLifecycle()
-    // Another device in the session has the sound: nothing on this phone is playing.
-    val remote = party.remoteSpeaker
     // A watch comes and goes; ask again each time the drawer opens.
     LaunchedEffect(Unit) { PlayerPlatform.host.refreshWatchOutput() }
 
@@ -117,7 +111,7 @@ internal fun AudioOutputSheet(
         ) {
             outputs.forEach { device ->
                 OutputRow(
-                    device = if (remote != null) device.copy(isActive = false) else device,
+                    device = device,
                     accountName = accountName,
                     onSelect = { PlayerPlatform.host.selectAudioOutput(device.id) },
                 )
@@ -131,7 +125,6 @@ internal fun AudioOutputSheet(
                 WatchRow(watch = watch, onClick = { PlayerPlatform.host.selectWatchOutput() })
             }
             if (cast.supported) CastRow(cast = cast, onClick = onOpenCast)
-            if ((party.inParty || party.isHome) && party.supportsOutput) SessionDevices(party)
         }
 
         Spacer(Modifier.height(10.dp))
@@ -510,93 +503,3 @@ private fun iconFor(device: AudioOutputDevice): ImageVector = when (device.kind)
 /** How many times the level is re-read after a route change, and how far apart. */
 private const val VOLUME_REREADS = 4
 private const val VOLUME_REREAD_GAP_MS = 250L
-
-/**
- * Connect: the other devices in this Listen Together session, listed with the
- * phone's own outputs because to the listener they are the same question —
- * where is the sound coming out. Picking one makes it the speaker and this
- * phone a remote; picking any output of this phone brings the sound back.
- */
-@Composable
-private fun SessionDevices(party: PartyUi) {
-    val others = party.members.filter { it.memberId != party.you?.memberId }
-    if (others.isEmpty()) return
-    Text(
-        text = if (party.isHome) "Your devices" else "In this session",
-        style = MaterialTheme.typography.labelMedium,
-        color = Color.White.copy(alpha = 0.55f),
-        modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 2.dp),
-    )
-    others.forEach { member ->
-        val computer = Regex("(?i)chrome|firefox|safari|edge|macos|windows|linux").containsMatchIn(member.deviceName)
-        SessionDeviceRow(
-            title = member.deviceName.ifBlank { member.displayName },
-            subtitle = if (party.outputMemberId == member.memberId) "Playing" else if (!member.connected) "Offline" else member.displayName,
-            icon = if (computer) Icons.Rounded.Laptop else Icons.Rounded.Smartphone,
-            active = party.outputMemberId == member.memberId,
-            enabled = !party.controlsLocked,
-            onClick = { PlayerPlatform.host.selectPartyOutput(member.memberId) },
-        )
-    }
-    if (party.isHome) return
-    SessionDeviceRow(
-        title = "Every device",
-        subtitle = if (party.outputMemberId == null) "Playing everywhere, in sync" else "Everyone hears it, in sync",
-        icon = Icons.Rounded.Groups,
-        active = party.outputMemberId == null,
-        enabled = !party.controlsLocked,
-        onClick = { PlayerPlatform.host.selectPartyOutput(null) },
-    )
-}
-
-@Composable
-private fun SessionDeviceRow(
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    active: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
-    val haptics = rememberHaptics()
-    val green = Color(0xFF30D158)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(ROW_SHAPE)
-            .background(Color.White.copy(alpha = if (active) 0.10f else 0.05f))
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                enabled = enabled && !active,
-            ) {
-                haptics.play(Haptic.Select)
-                onClick()
-            }
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(40.dp)
-                .clip(CircleShape)
-                .background(if (active) green.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.08f)),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(icon, contentDescription = null, tint = if (active) green else Color.White.copy(alpha = 0.7f), modifier = Modifier.size(21.dp))
-        }
-        Spacer(Modifier.width(13.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal),
-                color = if (active) green else Color.White.copy(alpha = 0.85f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Spacer(Modifier.height(2.dp))
-            Text(subtitle, style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.55f), maxLines = 1, overflow = TextOverflow.Ellipsis)
-        }
-        if (active) Icon(Icons.Rounded.Check, contentDescription = null, tint = green, modifier = Modifier.size(20.dp))
-    }
-}

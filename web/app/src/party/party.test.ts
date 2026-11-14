@@ -94,7 +94,6 @@ describe('AutoPlay supplier', () => {
     memberId,
     userId: '',
     displayName: memberId,
-    deviceName: '',
     avatarUrl: null,
     isHost,
     connected,

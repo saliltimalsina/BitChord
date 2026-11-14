@@ -45,7 +45,7 @@ jobs:
         working-directory: web
         env:
           BITCHORD_SITE_ORIGINS: https://music.saliltimalsina.com.np,http://localhost:5173
-          VITE_PARTY_SERVER_URL: https://bitchord-jam-salil.onrender.com
+          VITE_PARTY_SERVER_URL: https://api.bitchord.kushagrasingh.in
         run: |
           pnpm install --frozen-lockfile
           pnpm typecheck

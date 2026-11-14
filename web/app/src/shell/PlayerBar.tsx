@@ -14,9 +14,8 @@ import {
 } from '@/components/icons/Transport';
 import { FavoriteButton } from '@/components/music/FavoriteButton';
 import { TrackMenu } from '@/components/music/TrackMenu';
-import { useIsPlaying, usePlayer } from '@/state/player';
+import { usePlayer } from '@/state/player';
 import { useUi } from '@/state/ui';
-import { DevicesButton, RemoteSpeakerTag } from './DevicesButton';
 import { Lcd } from './Lcd';
 import { SleepTimerButton } from './SleepTimerButton';
 import { fadeForVolume, VolumeControl } from './VolumeControl';
@@ -41,7 +40,7 @@ export function PlayerBar() {
     const entry = s.queue[s.index]?.track;
     return entry && entry.videoId === s.nowPlaying?.videoId ? entry : null;
   });
-  const playing = useIsPlaying();
+  const playing = usePlayer((s) => s.status === 'playing' || s.status === 'buffering');
   const hasNext = usePlayer((s) => s.index + 1 < s.queue.length || s.repeat !== 'off' || (s.autoplay && s.index >= 0));
   const shuffle = usePlayer((s) => s.shuffle);
   const repeat = usePlayer((s) => s.repeat);
@@ -60,8 +59,6 @@ export function PlayerBar() {
         role="region"
         aria-label="Player"
       >
-        {/* Where the sound is while this tab is a remote, resting on the bar's top edge. */}
-        <RemoteSpeakerTag className="!absolute right-5 bottom-[calc(100%+6px)]" />
         <div className="flex items-center justify-between pr-2">
           <button className={toggle} aria-label="Shuffle" aria-pressed={shuffle} onClick={toggleShuffle}>
             <ShuffleIcon size={28} />
@@ -117,7 +114,6 @@ export function PlayerBar() {
           <button className={fading} disabled={!hasTrack} aria-label="Full screen player (F)" title="Full screen (F)" onClick={() => setFullScreen(true)}>
             <Maximize2 size={16} strokeWidth={2} />
           </button>
-          <DevicesButton className={fading} />
           <VolumeControl open={volumeOpen} onOpen={() => setVolumeOpen(true)} className={action} />
         </div>
       </div>

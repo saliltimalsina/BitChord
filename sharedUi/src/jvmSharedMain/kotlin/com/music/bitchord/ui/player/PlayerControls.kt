@@ -63,8 +63,6 @@ import androidx.compose.material.icons.rounded.Cast
 import androidx.compose.material.icons.rounded.CastConnected
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Headphones
-import androidx.compose.material.icons.rounded.Laptop
-import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material.icons.rounded.Watch
@@ -1029,12 +1027,7 @@ private fun rememberOutputGlyph(): OutputGlyph {
     val cast by PlayerPlatform.host.castState.collectAsStateWithLifecycle()
     val watch by PlayerPlatform.host.watchOutput.collectAsStateWithLifecycle()
     val active = rememberAudioOutputs().firstOrNull { it.isActive }
-    val remote = rememberRemoteSpeakerName()
     return when {
-        remote != null -> OutputGlyph(
-            if (Regex("(?i)chrome|firefox|safari|edge|macos|windows|linux").containsMatchIn(remote)) Icons.Rounded.Laptop else Icons.Rounded.Smartphone,
-            PILL_OUTPUT_WIDE_SIZE,
-        )
         cast.connectedName != null -> OutputGlyph(Icons.Rounded.CastConnected, PILL_OUTPUT_WIDE_SIZE)
         watch.active -> OutputGlyph(Icons.Rounded.Watch, PILL_OUTPUT_TALL_SIZE)
         else -> when (active?.kind) {
@@ -1188,7 +1181,6 @@ internal fun OutputCaption(
     onOpenMembers: () -> Unit,
 ) {
     val badge = rememberPartyBadge()
-    val remoteSpeaker = rememberRemoteSpeakerName()
     val outputName = rememberAudioOutputName(accountName)
     val outputFormat by PlayerPlatform.host.outputFormat.collectAsStateWithLifecycle()
     // The shine means one thing: the DAC has this track to itself, bit-perfect
@@ -1204,18 +1196,7 @@ internal fun OutputCaption(
         .fillMaxWidth(0.65f)
         .additiveChrome(LocalPlayerChrome.current)
         .clickable { if (badge.inParty) onOpenMembers() else onOpenOutput() }
-    if (remoteSpeaker != null) {
-        // Spotify's green line: a remote must never leave in doubt where the sound is.
-        Text(
-            text = "Playing on $remoteSpeaker",
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.sp, fontWeight = FontWeight.SemiBold),
-            color = Color(0xFF30D158),
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth(0.65f).clickable { onOpenOutput() },
-        )
-    } else if (!badge.inParty && (outputFormat.bitPerfect || outputFormat.dacLimited)) {
+    if (!badge.inParty && (outputFormat.bitPerfect || outputFormat.dacLimited)) {
         ShimmerText(
             text = outputName,
             style = MaterialTheme.typography.labelSmall.copy(
@@ -1236,17 +1217,6 @@ internal fun OutputCaption(
             modifier = captionModifier,
         )
     }
-}
-
-/** The device playing the session's sound when it is not this one, as it changes. */
-@Composable
-internal fun rememberRemoteSpeakerName(): String? {
-    val name = remember {
-        PlayerPlatform.host.party
-            .map { party -> party.remoteSpeaker?.let { it.deviceName.ifBlank { it.displayName } } }
-            .distinctUntilChanged()
-    }
-    return name.collectAsStateWithLifecycle(initialValue = null).value
 }
 
 /** The three fields of a party the player draws — see [OutputPartyPill]. */

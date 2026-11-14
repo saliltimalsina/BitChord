@@ -1,7 +1,6 @@
 package com.music.bitchord.data.listentogether
 
 import android.content.Context
-import android.os.Build
 import android.os.SystemClock
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -186,10 +185,6 @@ object ListenTogether {
         val roundTripMs: Long = 0,
         /** The last thing that went wrong, for the screen to show. */
         val error: String? = null,
-        /** The server can pick one device to play (Connect); an older one sends no outputMemberId. */
-        val supportsOutput: Boolean = false,
-        /** In "Your devices" (a home) rather than a Listen Together party. */
-        val isHome: Boolean = false,
     ) {
         val inParty: Boolean get() = code != null
         val isFull: Boolean get() = members.size >= maxMembers
@@ -208,10 +203,6 @@ object ListenTogether {
          */
         val controlsLocked: Boolean
             get() = inParty && hostOnlyControl && you?.isHost != true
-
-        /** Another device in the session is the speaker; this one is a remote. */
-        val outputElsewhere: Boolean
-            get() = inParty && supportsOutput && playback.outputMemberId != null && playback.outputMemberId != you?.memberId
     }
 
     /** A refusal from the server, carrying the machine-readable half. */
@@ -830,7 +821,6 @@ object ListenTogether {
             JoinRequest(
                 who.userId, who.deviceId, who.name, who.avatar, maxMembers,
                 autoplayEnabled = AppSettings.autoplay.value,
-                deviceName = who.deviceName,
             ),
         )
 
@@ -888,7 +878,7 @@ object ListenTogether {
         refuseIfRecentlyKicked(cleaned)
         val membership = post(
             "$serverBase/api/parties/$cleaned/join",
-            JoinRequest(who.userId, who.deviceId, who.name, who.avatar, deviceName = who.deviceName),
+            JoinRequest(who.userId, who.deviceId, who.name, who.avatar),
         )
 
         withContext(NonCancellable) {
@@ -994,7 +984,7 @@ object ListenTogether {
             val targetJoinResult = runCatching {
                 post(
                     "$targetBase/api/parties/$cleanedTargetCode/join",
-                    JoinRequest(who.userId, who.deviceId, who.name, who.avatar, deviceName = who.deviceName),
+                    JoinRequest(who.userId, who.deviceId, who.name, who.avatar),
                 )
             }
 
@@ -1073,116 +1063,6 @@ object ListenTogether {
         }
     }
 
-    // ------------------------------------------------------- your devices --
-    //
-    // Spotify Connect's device list: this person's own phones and browsers stay
-    // connected to each other while open, so any of them can see what another
-    // plays and take it over. A home opens with a secret key each paired device
-    // holds; a new device gets it once by claiming a short code another shows.
-
-    fun hasHome(): Boolean = prefs.getString(KEY_HOME, null) != null
-
-    @Volatile private var homeJoining = false
-    @Volatile private var lastHomeAttemptMs = 0L
-
-    /** Joins "Your devices" when paired and in nothing else. Cheap; called on the sync tick. */
-    fun ensureHome() {
-        val key = prefs.getString(KEY_HOME, null) ?: return
-        if (_state.value.inParty || homeJoining) return
-        val now = SystemClock.elapsedRealtime()
-        if (lastHomeAttemptMs != 0L && now - lastHomeAttemptMs < HOME_RETRY_MS) return
-        lastHomeAttemptMs = now
-        homeJoining = true
-        scope.launch {
-            try {
-                switchMutex.withLock { if (!_state.value.inParty) joinHomeOnServer(key) }
-            } catch (e: Exception) {
-                Log.w(TAG, "home join failed: ${redact(e.message)}")
-            } finally {
-                homeJoining = false
-            }
-        }
-    }
-
-    private suspend fun joinHomeOnServer(key: String) {
-        val who = identity(nickname()) ?: return
-        val base = resolveHttpBase(effectiveIdleServerBase())
-        val membership = withContext(Dispatchers.IO) {
-            post(
-                "$base/api/homes/join",
-                JoinRequest(who.userId, who.deviceId, who.name, who.avatar, deviceName = who.deviceName, homeKey = key),
-            )
-        }
-        withContext(NonCancellable) {
-            activePartyServerBase = base
-            token = membership.token
-            prefs.edit()
-                .putString(KEY_CODE, membership.code)
-                .putString(KEY_TOKEN, membership.token)
-                .apply()
-            clock.reset()
-            _state.value = State(
-                code = membership.code,
-                you = membership.you,
-                members = membership.party.members.sortedBy { it.joinedAtMs },
-                maxMembers = membership.party.maxMembers,
-                playback = membership.party.playback,
-                queue = membership.party.queue,
-                connection = Connection.CONNECTING,
-                isHome = true,
-                supportsOutput = true,
-            )
-        }
-        connect()
-    }
-
-    private fun newHomeKey(): String {
-        val bytes = ByteArray(24)
-        java.security.SecureRandom().nextBytes(bytes)
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
-
-    /** A code another device can enter to join "Your devices"; pairs this one first if needed. */
-    suspend fun startPairing(): Result<String> = runCatching {
-        var key = prefs.getString(KEY_HOME, null)
-        if (key == null) {
-            key = newHomeKey()
-            prefs.edit().putString(KEY_HOME, key).apply()
-            if (_state.value.inParty && !_state.value.isHome) leaveParty()
-            lastHomeAttemptMs = 0L
-            ensureHome()
-        }
-        val base = resolveHttpBase(effectiveIdleServerBase())
-        val response = withContext(Dispatchers.IO) {
-            http.post("$base/api/homes/pair") {
-                contentType(ContentType.Application.Json)
-                setBody(buildJsonObject { put("homeKey", key) })
-            }
-        }
-        if (!response.status.isSuccess()) throw response.toPartyException()
-        json.parseToJsonElement(response.bodyAsText()).jsonObject["code"]!!.jsonPrimitive.content
-    }
-
-    /** Joins "Your devices" with a code shown on another of this person's devices. */
-    suspend fun claimPairing(rawCode: String): Result<Unit> = runCatching {
-        val code = rawCode.filter { it.isLetterOrDigit() }.uppercase()
-        if (code.length != CODE_LENGTH) throw PartyException("bad_code", "A pairing code is six letters or digits.")
-        val base = resolveHttpBase(effectiveIdleServerBase())
-        val response = withContext(Dispatchers.IO) { http.post("$base/api/homes/pair/$code") }
-        if (!response.status.isSuccess()) throw response.toPartyException()
-        val key = json.parseToJsonElement(response.bodyAsText()).jsonObject["homeKey"]!!.jsonPrimitive.content
-        prefs.edit().putString(KEY_HOME, key).apply()
-        if (_state.value.inParty) leaveParty()
-        lastHomeAttemptMs = 0L
-        ensureHome()
-    }
-
-    /** Unpairs this device from "Your devices". */
-    suspend fun forgetHome() {
-        prefs.edit().remove(KEY_HOME).apply()
-        if (_state.value.isHome) leaveParty()
-    }
-
     // ------------------------------------------------------------ controls --
     //
     // Any member may send any of these, unless the host has taken control of
@@ -1234,9 +1114,6 @@ object ListenTogether {
     fun kick(memberId: String) = control("kick") { put("memberId", memberId) }
 
     fun setAutoplay(enabled: Boolean) = control("setAutoplay") { put("enabled", enabled) }
-
-    /** Moves the sound to one member's device; null hands it back to every device. */
-    fun setOutput(memberId: String?) = control("setOutput") { put("memberId", memberId) }
 
     /** Host only, and refused by the server from anybody else. @see State.controlsLocked */
     fun setHostOnlyControl(enabled: Boolean) =
@@ -1453,9 +1330,6 @@ object ListenTogether {
                     queue = party.queue,
                     connection = Connection.LIVE,
                     error = null,
-                    isHome = party.isHome,
-                    supportsOutput = (frame["party"] as? JsonObject)
-                        ?.let { (it["playback"] as? JsonObject)?.containsKey("outputMemberId") } == true,
                 ) }
             }
 
@@ -1477,8 +1351,7 @@ object ListenTogether {
                 // is the guard that keeps two simultaneous controllers from
                 // sending each other backwards.
                 if (playback.seq < _state.value.playback.seq) return
-                val supportsOutput = (frame["playback"] as? JsonObject)?.containsKey("outputMemberId") == true
-                _state.update { it.copy(playback = playback, supportsOutput = supportsOutput) }
+                _state.update { it.copy(playback = playback) }
                 // The queue does not ride along with the state — only its
                 // sequence number does. Disagreeing with the copy held here
                 // means a queue frame was missed, which the heartbeat therefore
@@ -1505,7 +1378,7 @@ object ListenTogether {
                             it,
                         )
                     }.getOrNull()
-                }?.sortedBy { it.joinedAtMs } ?: return // join order: device pickers mustn't reshuffle
+                } ?: return
                 val maxMembers = frame["maxMembers"]?.jsonPrimitive?.content?.toIntOrNull() ?: _state.value.maxMembers
                 // Absent on a server that predates the setting, which is not
                 // the same as "off": keeping the value already held means an
@@ -1577,7 +1450,6 @@ object ListenTogether {
         val deviceId: String,
         val name: String,
         val avatar: String?,
-        val deviceName: String = Build.MODEL.orEmpty().trim().take(60),
     )
 
     /**
@@ -1832,8 +1704,6 @@ object ListenTogether {
     private val ABSOLUTE_URL = Regex("""(?:https?|wss?)://[^\s,;)\]}'\"]+""", RegexOption.IGNORE_CASE)
     private const val KEY_CODE = "party_code"
     private const val KEY_TOKEN = "party_token"
-    private const val KEY_HOME = "home_key"
-    private const val HOME_RETRY_MS = 15_000L
     private const val KEY_DEVICE = "device_id"
     private const val KEY_NICKNAME = "party_nickname"
     private const val KEY_KICKED = "party_kicked_until"

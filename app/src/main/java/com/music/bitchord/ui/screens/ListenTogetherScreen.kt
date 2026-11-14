@@ -32,12 +32,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cloud
-import androidx.compose.material.icons.rounded.Groups
-import androidx.compose.material.icons.rounded.Laptop
-import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -376,8 +371,6 @@ fun ListenTogetherScreen(
                         busy = true
                         failure = null
                         scope.launch {
-                            // A party replaces "Your devices" while it runs; the home comes back after.
-                            if (ListenTogether.state.value.isHome) ListenTogether.leaveParty()
                             failure = ListenTogether.createParty(nickname, maxMembers)
                                 .exceptionOrNull()?.message
                             busy = false
@@ -496,7 +489,7 @@ fun ListenTogetherScreen(
             }
         }
 
-        if (!state.inParty || state.isHome) {
+        if (!state.inParty) {
             PartyLanding(
                 avatarUrl = ListenTogether.myAvatarUrl(),
                 enabled = signedIn && ListenTogether.hasServer && !busy,
@@ -527,8 +520,6 @@ fun ListenTogetherScreen(
             // under a button that has not been pressed yet.
             PartyActivityList(activity)
         }
-
-        if (!state.inParty || state.isHome) YourDevices(state = state, enabled = signedIn && ListenTogether.hasServer)
 
         // Only when nothing is covering it. A sheet is a drawer over the bottom
         // of this page, and every failure it can produce is already shown
@@ -882,8 +873,6 @@ private fun InAParty(
 
     NowPlayingInTheParty(state)
 
-    PlayingOn(state)
-
     SettingsGroup(
         header = stringResource(
             R.string.listen_together_listening,
@@ -937,160 +926,6 @@ private fun InAParty(
             subtitle = stringResource(R.string.listen_together_leave_subtitle),
             onClick = onLeave,
         )
-    }
-}
-
-/**
- * Connect: which device makes the sound. Every other device keeps following
- * silently and works as a remote — the app, the notification and the lock
- * screen all still drive the session. "Every device" is an ordinary party.
- */
-@Composable
-private fun PlayingOn(state: ListenTogether.State) {
-    val output = state.playback.outputMemberId
-    val locked = state.controlsLocked
-    val green = Color(0xFF30D158)
-    SettingsGroup(
-        header = "Playing on",
-        footer = if (state.outputElsewhere) {
-            "This device is a remote: play, pause, skip and queue control the speaker."
-        } else {
-            "Pick one device to play the sound. The others become remotes."
-        },
-    ) {
-        state.members.forEachIndexed { index, member ->
-            if (index > 0) RowDivider()
-            val selected = output == member.memberId
-            val isYou = member.memberId == state.you?.memberId
-            val looksLikeComputer = Regex("(?i)chrome|firefox|safari|edge|macos|windows|linux").containsMatchIn(member.deviceName)
-            SettingsRow(
-                icon = if (looksLikeComputer) Icons.Rounded.Laptop else Icons.Rounded.Smartphone,
-                title = member.deviceName.ifBlank { member.displayName } + if (isYou) " (this device)" else "",
-                subtitle = member.displayName + if (!member.connected) " · reconnecting" else "",
-                enabled = !locked,
-                trailing = if (selected) {
-                    { Icon(Icons.Rounded.Check, contentDescription = "Playing here", tint = green) }
-                } else null,
-                onClick = { if (!selected) ListenTogether.setOutput(member.memberId) },
-            )
-        }
-        if (!state.isHome) {
-        RowDivider()
-        SettingsRow(
-            icon = Icons.Rounded.Groups,
-            title = "Every device",
-            subtitle = "Everyone hears it, in sync",
-            enabled = !locked,
-            trailing = if (output == null) {
-                { Icon(Icons.Rounded.Check, contentDescription = "Playing everywhere", tint = green) }
-            } else null,
-            onClick = { if (output != null) ListenTogether.setOutput(null) },
-        )
-        }
-    }
-}
-
-/**
- * Your devices (Spotify Connect): pair once, and this person's phones and
- * browsers stay connected while open — play on one, control it from another.
- */
-@Composable
-private fun YourDevices(state: ListenTogether.State, enabled: Boolean) {
-    val scope = rememberCoroutineScope()
-    var paired by remember { mutableStateOf(ListenTogether.hasHome()) }
-    var shownCode by remember { mutableStateOf<String?>(null) }
-    var entering by remember { mutableStateOf(false) }
-    var entry by remember { mutableStateOf("") }
-    var problem by remember { mutableStateOf<String?>(null) }
-    var working by remember { mutableStateOf(false) }
-
-    if (paired && state.isHome) PlayingOn(state)
-
-    SettingsGroup(
-        header = "Your devices",
-        footer = problem ?: shownCode?.let { "Enter $it in BitChord on your other device (Listen Together › Your devices). It works once, for 10 minutes." }
-            ?: "Paired devices stay connected while BitChord is open on them. Play on one, control it from another — like Spotify Connect.",
-    ) {
-        SettingsRow(
-            icon = Icons.Rounded.Smartphone,
-            title = if (paired) "Pair another device" else "Pair a laptop or another phone",
-            subtitle = shownCode?.let { "Code: $it" } ?: "Shows a code to enter on the other device",
-            enabled = enabled && !working,
-            onClick = {
-                working = true
-                problem = null
-                scope.launch {
-                    ListenTogether.startPairing()
-                        .onSuccess { shownCode = it; paired = true }
-                        .onFailure { problem = it.message }
-                    working = false
-                }
-            },
-        )
-        RowDivider()
-        if (!entering) {
-            SettingsRow(
-                icon = SfIcons.Login,
-                title = "Enter a pairing code",
-                subtitle = "From BitChord on your laptop or another device",
-                enabled = enabled && !working,
-                onClick = { entering = true },
-            )
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = ROW_INSET, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                BasicTextField(
-                    value = entry,
-                    onValueChange = { entry = it.filter(Char::isLetterOrDigit).uppercase().take(6) },
-                    singleLine = true,
-                    textStyle = MaterialTheme.typography.titleLarge.copy(
-                        color = MaterialTheme.colorScheme.onSurface,
-                        letterSpacing = 6.sp,
-                    ),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.onSurface),
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Done),
-                    decorationBox = { inner ->
-                        Box {
-                            if (entry.isEmpty()) {
-                                Text("ABC123", style = MaterialTheme.typography.titleLarge, letterSpacing = 6.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            inner()
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                TextButton(
-                    enabled = entry.length == 6 && !working,
-                    onClick = {
-                        working = true
-                        problem = null
-                        scope.launch {
-                            ListenTogether.claimPairing(entry)
-                                .onSuccess { paired = true; entering = false; entry = "" }
-                                .onFailure { problem = it.message }
-                            working = false
-                        }
-                    },
-                ) { Text("Pair", color = MaterialTheme.colorScheme.onSurface) }
-            }
-        }
-        if (paired) {
-            RowDivider()
-            SettingsRow(
-                icon = SfIcons.Logout,
-                title = "Unpair this phone",
-                subtitle = "Stops connecting to your other devices",
-                onClick = {
-                    scope.launch {
-                        ListenTogether.forgetHome()
-                        paired = false
-                        shownCode = null
-                    }
-                },
-            )
-        }
     }
 }
 

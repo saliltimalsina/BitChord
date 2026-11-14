@@ -2,12 +2,10 @@ package party
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
 	"fmt"
 	"sort"
-	"strings"
 	"sync"
 
 	"github.com/KabirSinghBhatia/BitChord/backend/clock"
@@ -103,9 +101,6 @@ type PlaybackState struct {
 	StartedBy     *string  `json:"startedBy"`
 	StartedByName *string  `json:"startedByName"`
 	AutoplayEnabled bool   `json:"autoplayEnabled"`
-	// OutputMemberId is the member whose device plays the audio, Spotify
-	// Connect style. Nil means every device plays — an ordinary party.
-	OutputMemberId *string `json:"outputMemberId"`
 }
 
 func NewPlaybackState() *PlaybackState {
@@ -154,11 +149,6 @@ func (p *PlaybackState) Play(memberId *string, positionMs *int64) {
 		startAt = *positionMs
 	}
 	if startAt < 0 {
-		startAt = 0
-	}
-	// Play on a finished track starts it again, as any player does — otherwise
-	// it "plays" its last instant and stops, and the press looks ignored.
-	if p.Track != nil && p.Track.DurationMs != nil && *p.Track.DurationMs > 0 && startAt >= *p.Track.DurationMs-1000 {
 		startAt = 0
 	}
 	p.PositionMs = startAt
@@ -475,24 +465,8 @@ func (p *PlaybackState) ToWire(serverMs int64) map[string]interface{} {
 		"startedBy":           p.StartedBy,
 		"startedByName":       p.StartedByName,
 		"autoplayEnabled":     p.AutoplayEnabled,
-		"outputMemberId":      p.OutputMemberId,
 		"updatedAtMs":         p.UpdatedAtMs,
 	}
-}
-
-// SetOutput moves the sound to another device without moving the music: the
-// playhead is carried over, and a playing track is re-anchored PlayLeadMs ahead
-// so the new device has time to buffer before it is due to be audible.
-func (p *PlaybackState) SetOutput(memberId *string, output *string) {
-	now := clock.NowMs()
-	p.PositionMs = p.PositionAt(now)
-	if p.IsPlaying {
-		p.AnchorMs = now + int64(config.PlayLeadMs)
-	} else {
-		p.AnchorMs = now
-	}
-	p.OutputMemberId = output
-	p.touch(memberId)
 }
 
 // SetAutoplay changes the party-wide AutoPlay choice. It belongs to playback
@@ -520,7 +494,6 @@ type Member struct {
 	UserId             string  `json:"userId"`
 	DeviceId           string  `json:"-"`
 	DisplayName        string  `json:"displayName"`
-	DeviceName         string  `json:"deviceName,omitempty"`
 	AvatarUrl          *string `json:"avatarUrl,omitempty"`
 	Token              string  `json:"-"`
 	IsHost             bool    `json:"isHost"`
@@ -538,7 +511,6 @@ func (m *Member) ToWire() map[string]interface{} {
 		"memberId":    m.MemberId,
 		"userId":      m.UserId,
 		"displayName": m.DisplayName,
-		"deviceName":  m.DeviceName,
 		"avatarUrl":   m.AvatarUrl,
 		"isHost":      m.IsHost,
 		"connected":   m.Connected,
@@ -561,11 +533,7 @@ type Party struct {
 	// seconds. It travels with MaxMembers on the members frame instead, which
 	// is only sent when something about the membership actually changes.
 	HostOnlyControl bool
-	// IsHome marks "Your devices": one person's own devices, joined with a
-	// secret key rather than a code (see GetOrCreateHome). It is never aged out
-	// like a party, and starting playback makes the starting device the speaker.
-	IsHome      bool
-	CreatedAtMs int64
+	CreatedAtMs     int64
 	TouchedAtMs     int64
 	EmptySinceMs    *int64
 }
@@ -702,12 +670,6 @@ func (p *Party) Remove(memberId string) *Member {
 		return nil
 	}
 	delete(p.Members, memberId)
-	// The speaker left: stop rather than carry on playing to nobody, and hand
-	// the sound back to every device so whoever presses play next hears it.
-	if out := p.Playback.OutputMemberId; out != nil && *out == memberId {
-		p.Playback.Pause(nil, nil)
-		p.Playback.OutputMemberId = nil
-	}
 	if m.IsHost && len(p.Members) > 0 {
 		for _, next := range p.Members {
 			next.IsHost = true
@@ -791,7 +753,7 @@ func (p *Party) ExpiredMembers(now int64) []*Member {
 }
 
 func (p *Party) IsExpired(now int64) bool {
-	if !p.IsHome && now-p.CreatedAtMs > config.PartyMaxAgeMs {
+	if now-p.CreatedAtMs > config.PartyMaxAgeMs {
 		return true
 	}
 	if p.EmptySinceMs != nil {
@@ -820,7 +782,6 @@ func (p *Party) ToWire() map[string]interface{} {
 		"createdAtMs":     p.CreatedAtMs,
 		"maxMembers":      p.MaxMembers,
 		"hostOnlyControl": p.HostOnlyControl,
-		"isHome":          p.IsHome,
 		"members":         membersWire,
 		"playback":        p.Playback.ToWire(now),
 		"queue":           p.Playback.QueueToWire(),
@@ -890,37 +851,6 @@ func (s *PartyStore) CreateWithLimits(maxParties, maxMembers int) (*Party, error
 		}
 	}
 	return nil, NewPartyError(503, "code_exhausted", "Could not allocate a party code.")
-}
-
-// HomeCode is the room a home key opens: a hash, so the key itself is never a
-// map key, never logged, and never sent back to anybody.
-func HomeCode(homeKey string) string {
-	sum := sha256.Sum256([]byte("bitchord-home:" + homeKey))
-	return "H" + strings.ToUpper(hex.EncodeToString(sum[:10]))
-}
-
-// IsHomeCode tells a home's room from a party's six-character one.
-func IsHomeCode(code string) bool {
-	return len(code) == 21 && code[0] == 'H'
-}
-
-// GetOrCreateHome opens the home a key names, creating it on first use (or
-// again after it emptied and was swept — a home holds no state worth keeping
-// across that).
-func (s *PartyStore) GetOrCreateHome(homeKey string, maxParties int) (*Party, error) {
-	code := HomeCode(homeKey)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if p, ok := s.parties[code]; ok {
-		return p, nil
-	}
-	if maxParties > 0 && len(s.parties) >= maxParties {
-		return nil, NewPartyError(503, "server_full", "The party server is busy. Please try again in a few minutes.")
-	}
-	p := NewPartyWithMaxMembers(code, 10)
-	p.IsHome = true
-	s.parties[code] = p
-	return p, nil
 }
 
 func (s *PartyStore) Get(code string) (*Party, error) {

@@ -156,6 +156,11 @@ func (p *PlaybackState) Play(memberId *string, positionMs *int64) {
 	if startAt < 0 {
 		startAt = 0
 	}
+	// Play on a finished track starts it again, as any player does — otherwise
+	// it "plays" its last instant and stops, and the press looks ignored.
+	if p.Track != nil && p.Track.DurationMs != nil && *p.Track.DurationMs > 0 && startAt >= *p.Track.DurationMs-1000 {
+		startAt = 0
+	}
 	p.PositionMs = startAt
 	p.IsPlaying = true
 	p.AnchorMs = now + int64(config.PlayLeadMs)

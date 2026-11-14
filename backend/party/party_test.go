@@ -514,3 +514,16 @@ func TestSetOutputCarriesThePlayheadAndClearsWhenTheSpeakerLeaves(t *testing.T) 
 		t.Fatal("losing the output device should pause and fall back to everyone playing")
 	}
 }
+
+func TestPlayOnAFinishedTrackStartsItAgain(t *testing.T) {
+	p := NewParty("ABC123")
+	m, _ := p.Join("u", "d", "Me", nil)
+	dur := int64(280681)
+	p.Playback.SetTrack(&m.MemberId, &Track{VideoId: "v", DurationMs: &dur}, 0, false, nil, nil)
+	end := dur
+	p.Playback.Pause(&m.MemberId, &end)
+	p.Playback.Play(&m.MemberId, nil)
+	if p.Playback.PositionMs != 0 || !p.Playback.IsPlaying {
+		t.Fatalf("play at the end should restart: pos=%d playing=%v", p.Playback.PositionMs, p.Playback.IsPlaying)
+	}
+}

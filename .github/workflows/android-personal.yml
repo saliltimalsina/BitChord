@@ -50,7 +50,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Saved from personal too, not only the default branch, so a build
+      # starts from the last one's outputs rather than cold.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
 
       - name: Signing key and local properties
         env:
@@ -89,7 +93,10 @@ jobs:
       - name: Test and build
         run: |
           chmod +x gradlew
-          ./gradlew --no-daemon :app:testDevDebugUnitTest :app:assembleDevRelease \
+          # Without lintVital: three minutes of checks upstream's own CI runs on
+          # every PR, repeated here for one phone.
+          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest :app:assembleDevRelease \
+            -x lintVitalDevRelease \
             -Pbitchord.personalBuild=${{ github.run_number }} \
             -Pbitchord.updateRepo=${{ github.repository }} \
             -Pbitchord.appName=BitChord \

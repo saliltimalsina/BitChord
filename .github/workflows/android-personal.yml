@@ -6,7 +6,7 @@
 # Runs after the upstream sync pushes personal (it dispatches this workflow),
 # on any push to personal that touches the app, and by hand.
 #
-# The personal build is the dev flavor (com.dev.bitchord, "BitChord Dev"), so it
+# The personal build is the dev flavor (com.dev.bitchord, named "BitChord"), so it
 # sits beside upstream's official app rather than replacing it. Release-built
 # (minified), so it runs as smoothly as the official one.
 #
@@ -91,7 +91,8 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon :app:testDevDebugUnitTest :app:assembleDevRelease \
             -Pbitchord.personalBuild=${{ github.run_number }} \
-            -Pbitchord.updateRepo=${{ github.repository }}
+            -Pbitchord.updateRepo=${{ github.repository }} \
+            -Pbitchord.appName=BitChord
 
       - name: Publish the release
         env:
@@ -108,5 +109,5 @@ jobs:
           gh release create "$tag" "BitChord-v$version.apk" \
             --target personal \
             --title "BitChord personal $version" \
-            --notes "Built from personal at $(git rev-parse --short HEAD): upstream's latest plus this fork's features. Open BitChord Dev to update, or download the APK below." \
+            --notes "Built from personal at $(git rev-parse --short HEAD): upstream's latest plus this fork's features. Open BitChord to update, or download the APK below." \
             --latest

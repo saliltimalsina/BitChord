@@ -150,7 +150,13 @@ android {
         create("dev") {
             dimension = "env"
             applicationId = "com.dev.bitchord"
-            resValue("string", "app_name", "BitChord Dev")
+            // This fork's personal builds pass -Pbitchord.appName=BitChord, so the
+            // app on the phone is named plainly; a local build stays "BitChord Dev".
+            resValue(
+                "string",
+                "app_name",
+                (findProperty("bitchord.appName") as String?) ?: "BitChord Dev",
+            )
             // Upstream's releases are the prod app (another package, another
             // key), never an update for this one: following them installed the
             // official app and left this one nagging forever. A dev build only

@@ -237,7 +237,8 @@ object AppUpdateChecker {
      */
     private fun isNewerBuild(latest: String): Boolean {
         if (BuildConfig.PERSONAL_BUILD > 0) {
-            val run = latest.substringAfterLast('.').toIntOrNull() ?: return false
+            // "1.9.2.6", or "1.9.2.6-beta1" from a build named after upstream's beta.
+            val run = latest.substringBefore('-').substringAfterLast('.').toIntOrNull() ?: return false
             return run > BuildConfig.PERSONAL_BUILD
         }
         return isNewer(latest, BuildConfig.VERSION_NAME)

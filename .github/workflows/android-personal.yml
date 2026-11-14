@@ -101,7 +101,11 @@ jobs:
           version=$(python3 -c "import json; print(json.load(open('$dir/output-metadata.json'))['elements'][0]['versionName'])")
           # The updater picks the asset named like the app (BitChord-…) with no ABI suffix.
           cp "$(ls $dir/*universal*.apk | head -1)" "BitChord-v$version.apk"
-          gh release create "v$version" "BitChord-v$version.apk" \
+          # The tag carries no "-beta1": installed builds read the run number
+          # from the tag's last dotted part, and before the fix in
+          # AppUpdateChecker.isNewerBuild a suffix there hid every update.
+          tag="v${version%%-*}"
+          gh release create "$tag" "BitChord-v$version.apk" \
             --target personal \
             --title "BitChord personal $version" \
             --notes "Built from personal at $(git rev-parse --short HEAD): upstream's latest plus this fork's features. Open BitChord Dev to update, or download the APK below." \

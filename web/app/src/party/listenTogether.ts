@@ -558,7 +558,8 @@ function onFrame(text: string): void {
       break;
     }
     case 'members': {
-      const members = ((frame.members as unknown[]) ?? []).map((m) => memberOf(m as never));
+      // Join order, whatever order an older server sends them in: pickers mustn't reshuffle.
+      const members = ((frame.members as unknown[]) ?? []).map((m) => memberOf(m as never)).sort((a, b) => a.joinedAtMs - b.joinedAtMs);
       const maxMembers = typeof frame.maxMembers === 'number' ? frame.maxMembers : state.maxMembers;
       // Absent on an older server: keep what's held, so an upgrade doesn't silently unlock a party.
       const hostOnlyControl = typeof frame.hostOnlyControl === 'boolean' ? frame.hostOnlyControl : state.hostOnlyControl;

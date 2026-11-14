@@ -9,7 +9,34 @@ import { usePlayer } from '@/state/player';
 export const looksLikePhone = (m: PartyMember): boolean => /android|ios|iphone|pixel|galaxy|phone/i.test(m.deviceName);
 export const deviceLabel = (m: PartyMember): string => m.deviceName || m.displayName;
 
-/** The device making the sound, when it isn't this one: what the bar announces in green. */
+const DEVICES_BUTTON_ID = 'player-devices-button';
+
+/**
+ * Where the sound is while this tab is a remote: a small glass tab resting on
+ * the player, in the bar's own material, with the speaker named in green.
+ * It opens the devices menu, so the way back is one click from the reminder.
+ */
+export function RemoteSpeakerTag({ className = '' }: { className?: string }) {
+  const remote = useRemoteSpeaker();
+  if (!remote) return null;
+  const Icon = looksLikePhone(remote) ? Smartphone : Laptop;
+  return (
+    <button
+      className={`glass-pill relative flex items-center gap-1.5 rounded-pill py-1 ps-2 pe-2.5 type-footnote animate-[fade-in_220ms_ease-out] ${className}`}
+      onClick={() => document.getElementById(DEVICES_BUTTON_ID)?.click()}
+      title="Choose where it plays"
+    >
+      <span className="relative grid size-4 place-items-center">
+        <span className="absolute inset-0 animate-ping rounded-full bg-green/30 [animation-duration:2.4s]" />
+        <Icon size={12} strokeWidth={2.4} className="relative text-green" />
+      </span>
+      <span className="text-secondary">Playing on</span>
+      <span className="max-w-40 truncate font-semibold text-green">{deviceLabel(remote)}</span>
+    </button>
+  );
+}
+
+/** The device making the sound, when it isn't this one. */
 export function useRemoteSpeaker(): PartyMember | null {
   return useParty((s) => (outputElsewhere(s) ? (s.members.find((m) => m.memberId === s.playback.outputMemberId) ?? null) : null));
 }
@@ -37,6 +64,7 @@ export function DevicesButton({ className }: { className: string }) {
   return (
     <>
       <button
+        id={DEVICES_BUTTON_ID}
         className={className}
         aria-label={label}
         title={label}

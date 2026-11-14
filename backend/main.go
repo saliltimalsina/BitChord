@@ -1267,8 +1267,15 @@ func queueFrame(p *party.Party) map[string]interface{} {
 }
 
 func membersFrame(p *party.Party) map[string]interface{} {
-	membersList := make([]map[string]interface{}, 0, len(p.Members))
+	// In join order, as the snapshot is: a map's order changes between frames,
+	// and device pickers drawn from it would swap rows under a finger.
+	ordered := make([]*party.Member, 0, len(p.Members))
 	for _, m := range p.Members {
+		ordered = append(ordered, m)
+	}
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].JoinedAtMs < ordered[j].JoinedAtMs })
+	membersList := make([]map[string]interface{}, 0, len(ordered))
+	for _, m := range ordered {
 		membersList = append(membersList, m.ToWire())
 	}
 	return map[string]interface{}{

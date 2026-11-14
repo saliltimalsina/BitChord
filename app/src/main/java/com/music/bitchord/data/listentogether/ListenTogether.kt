@@ -1392,7 +1392,7 @@ object ListenTogether {
                             it,
                         )
                     }.getOrNull()
-                } ?: return
+                }?.sortedBy { it.joinedAtMs } ?: return // join order: device pickers mustn't reshuffle
                 val maxMembers = frame["maxMembers"]?.jsonPrimitive?.content?.toIntOrNull() ?: _state.value.maxMembers
                 // Absent on a server that predates the setting, which is not
                 // the same as "off": keeping the value already held means an

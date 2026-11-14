@@ -1041,7 +1041,10 @@ func applyControl(p *party.Party, member *party.Member, action string, frame map
 	// In a home, the device that starts the music is where it plays, unless a
 	// speaker is already chosen and still here — so a phone picking a song while
 	// the laptop plays is a remote, and the first press anywhere just works.
-	if p.IsHome && (action == protocol.ActionPlay || action == protocol.ActionSetTrack || action == protocol.ActionNext || action == protocol.ActionPrevious) {
+	// A play with nothing loaded claims nothing: there is no music to put anywhere yet.
+	startsMusic := action == protocol.ActionSetTrack || action == protocol.ActionNext || action == protocol.ActionPrevious ||
+		(action == protocol.ActionPlay && p.Playback.Track != nil)
+	if p.IsHome && startsMusic {
 		out := p.Playback.OutputMemberId
 		if out == nil || p.Members[*out] == nil || !p.Members[*out].Connected {
 			id := member.MemberId

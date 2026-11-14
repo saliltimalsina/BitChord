@@ -386,6 +386,7 @@ func handleCreateParty(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "server_error", err.Error())
 		return
 	}
+	m.DeviceName = req.DeviceName
 	partyWire := p.ToWire()
 	youWire := m.ToWire()
 	token := m.Token
@@ -432,6 +433,7 @@ func handleJoinParty(w http.ResponseWriter, r *http.Request) {
 		jsonError(w, http.StatusInternalServerError, "server_error", err.Error())
 		return
 	}
+	m.DeviceName = req.DeviceName
 	partyWire := p.ToWire()
 	youWire := m.ToWire()
 	token := m.Token
@@ -1170,6 +1172,18 @@ func applyControl(p *party.Party, member *party.Member, action string, frame map
 		p.Playback.SetAutoplay(&member.MemberId, enabled)
 		return true, "", ""
 
+	case protocol.ActionSetOutput:
+		var output *string
+		if raw, present := frame["memberId"]; present && raw != nil {
+			id, ok := raw.(string)
+			if !ok || p.Members[id] == nil {
+				return false, "invalid_member", "That device is no longer in this session."
+			}
+			output = &id
+		}
+		p.Playback.SetOutput(&member.MemberId, output)
+		return true, "", ""
+
 	case protocol.ActionSetHostOnlyControl:
 		enabled, ok := frame["enabled"].(bool)
 		if !ok {
@@ -1239,6 +1253,7 @@ func activityFrame(member *party.Member, action string, frame map[string]interfa
 	case protocol.ActionKick: detail = "Removed a listener from the party"
 	case protocol.ActionSetMaxMembers: detail = "Changed the party size"
 	case protocol.ActionSetAutoplay: detail = "Changed AutoPlay"
+	case protocol.ActionSetOutput: detail = "Moved playback to another device"
 	}
 	return map[string]interface{}{"type": protocol.FrameActivity, "action": action, "by": member.DisplayName, "detail": detail, "atMs": clock.NowMs()}
 }

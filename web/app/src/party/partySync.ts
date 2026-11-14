@@ -1,7 +1,7 @@
 import type { Track } from '@/data/music/types';
 import type { QueueTier } from '@/playback/queue/timeline';
-import { getAudio, partyPlayer, setPartyHooks, usePlayer } from '@/state/player';
-import { controlsLocked, msUntilStart, party, partyPositionMs, useParty, type PartyState } from './listenTogether';
+import { getAudio, partyPlayer, setPartyHooks, setSilencedForRemote, usePlayer } from '@/state/player';
+import { controlsLocked, msUntilStart, outputElsewhere, party, partyPositionMs, useParty, type PartyState } from './listenTogether';
 import type { PartyTrack } from './models';
 import { autoplaySupplierId, detectSingleMove, partyQueueIndexOf, partyUpcomingAfter } from './queueReading';
 
@@ -444,6 +444,7 @@ export function startPartySync(): () => void {
   });
   let key = '';
   const off = useParty.subscribe((state) => {
+    setSilencedForRemote(outputElsewhere(state));
     const next = `${state.playback.seq}|${state.queue.seq}|${state.code}|${state.clockSynced}`;
     if (next === key) return;
     key = next;
@@ -464,6 +465,7 @@ export function startPartySync(): () => void {
   }, TICK_MS);
   return () => {
     off();
+    setSilencedForRemote(false);
     clearInterval(tick);
     clearTimeout(publishTimer);
     clearTimeout(startTimer);

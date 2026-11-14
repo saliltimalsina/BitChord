@@ -32,7 +32,12 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Groups
+import androidx.compose.material.icons.rounded.Laptop
+import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.CloudDone
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -873,6 +878,8 @@ private fun InAParty(
 
     NowPlayingInTheParty(state)
 
+    PlayingOn(state)
+
     SettingsGroup(
         header = stringResource(
             R.string.listen_together_listening,
@@ -925,6 +932,54 @@ private fun InAParty(
             title = stringResource(R.string.listen_together_leave),
             subtitle = stringResource(R.string.listen_together_leave_subtitle),
             onClick = onLeave,
+        )
+    }
+}
+
+/**
+ * Connect: which device makes the sound. Every other device keeps following
+ * silently and works as a remote — the app, the notification and the lock
+ * screen all still drive the session. "Every device" is an ordinary party.
+ */
+@Composable
+private fun PlayingOn(state: ListenTogether.State) {
+    val output = state.playback.outputMemberId
+    val locked = state.controlsLocked
+    val green = Color(0xFF30D158)
+    SettingsGroup(
+        header = "Playing on",
+        footer = if (state.outputElsewhere) {
+            "This device is a remote: play, pause, skip and queue control the speaker."
+        } else {
+            "Pick one device to play the sound. The others become remotes."
+        },
+    ) {
+        state.members.forEachIndexed { index, member ->
+            if (index > 0) RowDivider()
+            val selected = output == member.memberId
+            val isYou = member.memberId == state.you?.memberId
+            val looksLikeComputer = Regex("(?i)chrome|firefox|safari|edge|macos|windows|linux").containsMatchIn(member.deviceName)
+            SettingsRow(
+                icon = if (looksLikeComputer) Icons.Rounded.Laptop else Icons.Rounded.Smartphone,
+                title = member.deviceName.ifBlank { member.displayName } + if (isYou) " (this device)" else "",
+                subtitle = member.displayName + if (!member.connected) " · reconnecting" else "",
+                enabled = !locked,
+                trailing = if (selected) {
+                    { Icon(Icons.Rounded.Check, contentDescription = "Playing here", tint = green) }
+                } else null,
+                onClick = { if (!selected) ListenTogether.setOutput(member.memberId) },
+            )
+        }
+        RowDivider()
+        SettingsRow(
+            icon = Icons.Rounded.Groups,
+            title = "Every device",
+            subtitle = "Everyone hears it, in sync",
+            enabled = !locked,
+            trailing = if (output == null) {
+                { Icon(Icons.Rounded.Check, contentDescription = "Playing everywhere", tint = green) }
+            } else null,
+            onClick = { if (output != null) ListenTogether.setOutput(null) },
         )
     }
 }

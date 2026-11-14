@@ -1,10 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { Check, Copy, Crown, LogOut, UserMinus } from 'lucide-react';
+import { Check, Copy, Crown, Laptop, LogOut, Smartphone, UserMinus, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router';
 import { PageHeader } from '@/components/PageHeader';
 import { useSignedIn } from '@/data/music/queries';
 import { cleanCode, inviteUrl } from '@/party/invite';
+import type { PartyMember } from '@/party/models';
 import {
   controlsLocked,
   createParty,
@@ -185,6 +186,57 @@ function InviteCard({ code, server, signedIn }: { code: string; server: string |
   );
 }
 
+const looksLikePhone = (m: PartyMember) => /android|ios|iphone|pixel|galaxy|phone/i.test(m.deviceName);
+
+/**
+ * Connect: which device makes the sound. Every other device stays in time
+ * silently and works as a remote; "Every device" is an ordinary party.
+ */
+function PlayingOn({ locked }: { locked: boolean }) {
+  const state = useParty();
+  const output = state.playback.outputMemberId;
+  const choose = (memberId: string | null) => !locked && memberId !== output && party.setOutput(memberId);
+  const row = `${settingsUi.download} w-full cursor-pointer text-start disabled:cursor-default disabled:opacity-60`;
+  return (
+    <>
+      <h2 className={settingsUi.sectionHeader}>Playing On</h2>
+      <section className={settingsUi.group}>
+        {state.members.map((m) => {
+          const Icon = looksLikePhone(m) ? Smartphone : Laptop;
+          const you = m.memberId === state.you?.memberId;
+          return (
+            <button key={m.memberId} className={row} disabled={locked} onClick={() => choose(m.memberId)}>
+              <Icon size={18} className={output === m.memberId ? 'text-green' : 'text-secondary'} />
+              <span className={settingsUi.downloadText}>
+                <span className={output === m.memberId ? 'text-green' : undefined}>
+                  {m.deviceName || m.displayName}
+                  {you && <span className="text-secondary"> (this device)</span>}
+                </span>
+                <span className={settingsUi.rowDetail}>
+                  {m.displayName}
+                  {!m.connected && ' · reconnecting'}
+                </span>
+              </span>
+              {output === m.memberId && <Check size={16} className="text-green" />}
+            </button>
+          );
+        })}
+        <button className={row} disabled={locked} onClick={() => choose(null)}>
+          <Users size={18} className={output === null ? 'text-green' : 'text-secondary'} />
+          <span className={settingsUi.downloadText}>
+            <span className={output === null ? 'text-green' : undefined}>Every device</span>
+            <span className={settingsUi.rowDetail}>Everyone hears it, in sync</span>
+          </span>
+          {output === null && <Check size={16} className="text-green" />}
+        </button>
+      </section>
+      {output && output !== state.you?.memberId && (
+        <p className={settingsUi.footer}>This device is a remote: play, pause, skip and queue control the speaker.</p>
+      )}
+    </>
+  );
+}
+
 function Avatar({ name, url, large = false }: { name: string; url: string | null; large?: boolean }) {
   const className = `grid place-items-center rounded-full bg-quaternary object-cover type-callout-emphasized ${large ? 'size-9' : 'size-6'}`;
   return url ? (
@@ -231,6 +283,8 @@ function InParty() {
           {copied ? 'Copied' : 'Copy Invite Link'}
         </button>
       </div>
+
+      <PlayingOn locked={locked} />
 
       <h2 className={settingsUi.sectionHeader}>
         Listening · {state.members.length} of {state.maxMembers}

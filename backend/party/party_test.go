@@ -484,3 +484,33 @@ func TestQueueIndexPrefersTheCopyAtTheNeedle(t *testing.T) {
 		t.Fatalf("expected b at 3 despite a stale index, got %d", ps.QueueIndex)
 	}
 }
+
+func TestSetOutputCarriesThePlayheadAndClearsWhenTheSpeakerLeaves(t *testing.T) {
+	p := NewParty("ABC123")
+	web, _ := p.Join("user1", "web", "Me", nil)
+	phone, _ := p.Join("user1", "phone", "Me", nil)
+
+	pos := int64(42000)
+	p.Playback.Pause(&web.MemberId, &pos)
+	seq := p.Playback.Seq
+
+	p.Playback.SetOutput(&phone.MemberId, &web.MemberId)
+	if p.Playback.OutputMemberId == nil || *p.Playback.OutputMemberId != web.MemberId {
+		t.Fatalf("output = %v, want web", p.Playback.OutputMemberId)
+	}
+	if p.Playback.PositionMs != pos || p.Playback.IsPlaying {
+		t.Fatalf("transfer moved the music: pos=%d playing=%v", p.Playback.PositionMs, p.Playback.IsPlaying)
+	}
+	if p.Playback.Seq <= seq {
+		t.Fatal("transfer must bump seq so clients apply it")
+	}
+	if p.Playback.ToWire(0)["outputMemberId"] == nil {
+		t.Fatal("outputMemberId missing from the state frame")
+	}
+
+	p.Playback.Play(&phone.MemberId, nil)
+	p.Remove(web.MemberId)
+	if p.Playback.OutputMemberId != nil || p.Playback.IsPlaying {
+		t.Fatal("losing the output device should pause and fall back to everyone playing")
+	}
+}

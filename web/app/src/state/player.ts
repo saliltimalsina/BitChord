@@ -222,9 +222,22 @@ export function setSleepFade(level: number): void {
   applyVolumes();
 }
 
+/**
+ * Silences this tab while another device in a Listen Together session is the
+ * speaker. The player keeps following (position, queue, controls), so this
+ * tab works as a remote and takes over instantly when the sound moves back.
+ * Kept apart from `muted`, which is the user's own and persisted.
+ */
+let silencedForRemote = false;
+export function setSilencedForRemote(silenced: boolean): void {
+  if (silenced === silencedForRemote) return;
+  silencedForRemote = silenced;
+  applyVolumes();
+}
+
 function applyVolumes() {
   const { volume, muted } = usePlayer.getState();
-  const level = muted ? 0 : Math.min(1, Math.max(0, volume)) * sleepFade;
+  const level = muted || silencedForRemote ? 0 : Math.min(1, Math.max(0, volume)) * sleepFade;
   if (graph) {
     // Routed through Web Audio: the elements stay at 1 and the graph carries volume and the fade.
     const now = graph.ctx.currentTime;

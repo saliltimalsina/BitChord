@@ -99,6 +99,9 @@ interface PlayerHost {
     /** The Listen Together party this device is in, as the player draws it. */
     val party: StateFlow<PartyUi>
 
+    /** Connect: make one member's device the speaker, or every device with null. */
+    fun selectPartyOutput(memberId: String?) = Unit
+
     suspend fun translateLyrics(
         trackId: String,
         lines: List<LyricLine>,
@@ -357,7 +360,16 @@ data class PartyUi(
     val members: List<PartyMember> = emptyList(),
     val you: PartyMember? = null,
     val code: String? = null,
-)
+    /** Connect: the member whose device plays; null means every device. */
+    val outputMemberId: String? = null,
+    /** False on a party server too old to pick one device; the picker hides. */
+    val supportsOutput: Boolean = false,
+) {
+    /** The device making the sound when it is not this one. */
+    val remoteSpeaker: PartyMember?
+        get() = outputMemberId?.takeIf { supportsOutput && it != you?.memberId }
+            ?.let { id -> members.firstOrNull { it.memberId == id } }
+}
 
 sealed interface LyricsTranslationResult {
     data class Translated(val lines: List<LyricLine>) : LyricsTranslationResult

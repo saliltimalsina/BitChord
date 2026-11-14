@@ -16,6 +16,7 @@ import { FavoriteButton } from '@/components/music/FavoriteButton';
 import { TrackMenu } from '@/components/music/TrackMenu';
 import { usePlayer } from '@/state/player';
 import { useUi } from '@/state/ui';
+import { DevicesButton, deviceLabel, useRemoteSpeaker } from './DevicesButton';
 import { Lcd } from './Lcd';
 import { SleepTimerButton } from './SleepTimerButton';
 import { fadeForVolume, VolumeControl } from './VolumeControl';
@@ -46,6 +47,7 @@ export function PlayerBar() {
   const repeat = usePlayer((s) => s.repeat);
   const { togglePlay, next, previous, toggleShuffle, cycleRepeat } = usePlayer.getState();
   const [volumeOpen, setVolumeOpen] = useState(false);
+  const remote = useRemoteSpeaker();
 
   return (
     // The side panel overlays the page; the pill re-centres in what's left.
@@ -59,6 +61,13 @@ export function PlayerBar() {
         role="region"
         aria-label="Player"
       >
+        {remote && (
+          // Spotify's green strip: the one thing a remote must never leave in doubt is where the sound is.
+          <div className="pointer-events-none absolute -top-7 right-6 flex items-center gap-1.5 rounded-pill bg-green px-2.5 py-0.5 type-callout-emphasized text-black">
+            <span className="size-1.5 animate-pulse rounded-full bg-black/70" />
+            Playing on {deviceLabel(remote)}
+          </div>
+        )}
         <div className="flex items-center justify-between pr-2">
           <button className={toggle} aria-label="Shuffle" aria-pressed={shuffle} onClick={toggleShuffle}>
             <ShuffleIcon size={28} />
@@ -114,6 +123,7 @@ export function PlayerBar() {
           <button className={fading} disabled={!hasTrack} aria-label="Full screen player (F)" title="Full screen (F)" onClick={() => setFullScreen(true)}>
             <Maximize2 size={16} strokeWidth={2} />
           </button>
+          <DevicesButton className={fading} />
           <VolumeControl open={volumeOpen} onOpen={() => setVolumeOpen(true)} className={action} />
         </div>
       </div>

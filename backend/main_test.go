@@ -550,3 +550,74 @@ func TestWebSocketTokenAsSubprotocol(t *testing.T) {
 		t.Fatalf("expected 401 for a wrong subprotocol token, got %v", err)
 	}
 }
+
+// Connect: a phone moves the sound to the browser, every device hears the new
+// output on the next state frame, and the device names travel to the picker.
+func TestSetOutputOverTheWire(t *testing.T) {
+	ts := setupTestServer()
+	defer ts.Close()
+
+	join := func(path, device, name string) map[string]interface{} {
+		b, _ := json.Marshal(map[string]string{"userId": "u1", "deviceId": device, "displayName": "Me", "deviceName": name})
+		res, err := http.Post(ts.URL+path, "application/json", bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out map[string]interface{}
+		_ = json.NewDecoder(res.Body).Decode(&out)
+		return out
+	}
+	web := join("/api/parties", "web", "Chrome on macOS")
+	code := web["code"].(string)
+	phone := join("/api/parties/"+code+"/join", "phone", "Pixel 8 Pro")
+	webId := web["you"].(map[string]interface{})["memberId"].(string)
+	if phone["you"].(map[string]interface{})["deviceName"] != "Pixel 8 Pro" {
+		t.Fatalf("deviceName not echoed: %v", phone["you"])
+	}
+
+	u, _ := url.Parse(ts.URL)
+	u.Scheme = "ws"
+	u.Path = "/ws/parties/" + code
+	h := http.Header{}
+	h.Set("Authorization", "Bearer "+phone["token"].(string))
+	ws, _, err := websocket.DefaultDialer.Dial(u.String(), h)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ws.Close()
+
+	awaitOutput := func(want interface{}) {
+		t.Helper()
+		for i := 0; i < 10; i++ {
+			_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+			var f map[string]interface{}
+			if err := ws.ReadJSON(&f); err != nil {
+				t.Fatalf("no state with outputMemberId=%v: %v", want, err)
+			}
+			if f["type"] == protocol.FrameState && f["playback"].(map[string]interface{})["outputMemberId"] == want {
+				return
+			}
+		}
+		t.Fatalf("no state with outputMemberId=%v", want)
+	}
+
+	_ = ws.WriteJSON(map[string]interface{}{"type": "control", "action": "setOutput", "memberId": webId})
+	awaitOutput(webId)
+	_ = ws.WriteJSON(map[string]interface{}{"type": "control", "action": "setOutput", "memberId": nil})
+	awaitOutput(nil)
+
+	_ = ws.WriteJSON(map[string]interface{}{"type": "control", "action": "setOutput", "memberId": "nobody"})
+	for i := 0; i < 10; i++ {
+		_ = ws.SetReadDeadline(time.Now().Add(2 * time.Second))
+		var f map[string]interface{}
+		if err := ws.ReadJSON(&f); err != nil {
+			t.Fatal("expected invalid_member error")
+		}
+		if f["type"] == protocol.FrameError {
+			if f["error"] != "invalid_member" {
+				t.Fatalf("error = %v", f["error"])
+			}
+			return
+		}
+	}
+}

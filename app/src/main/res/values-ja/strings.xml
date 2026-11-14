@@ -1449,10 +1449,14 @@
     <string name="sleep_timer_fade_out_subtitle">最後の30秒で音量を徐々に下げます</string>
     <string name="disable_spotify_canvas">Spotify Canvasを無効にする</string>
     <string name="disable_spotify_canvas_subtitle">Spotify Canvasを使用しません。アニメーションアートワークは他のソースから取得します</string>
-    <string name="edit_playlist">プレイリストを編集</string>
-    <string name="playlist_description">説明</string>
     <string name="home_daylist">Daylist · Spotify</string>
     <string name="home_your_playlists">あなたのプレイリスト</string>
+    <string name="home_your_albums">あなたのアルバム</string>
+    <string name="home_from_spotify">Spotify から</string>
+    <string name="home_connect_spotify">Spotify と連携</string>
+    <string name="home_connect_spotify_subtitle">Spotify のプレイリストをここに表示</string>
+    <string name="edit_playlist">プレイリストを編集</string>
+    <string name="playlist_description">説明</string>
     <string name="select_songs">選択</string>
     <string name="removed_from_playlist_notice">プレイリストから削除しました</string>
     <plurals name="picked_songs_count">

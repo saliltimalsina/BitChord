@@ -822,6 +822,7 @@ fun DetailScreen(
                             isPlaying = isCurrent && isPlaying,
                             activeTint = palette.accent,
                             searchPlayingStyle = true,
+                            showPlays = numbered,
                         )
                         if (position < matches.lastIndex) {
                             HorizontalDivider(
@@ -2117,7 +2118,9 @@ private fun CompactSongRow(
                 color = if (isCurrent) palette.accent else palette.onBackground,
             )
             Text(
-                text = song.artist,
+                // An artist's Top songs are ranked by plays, so each says how many.
+                text = listOfNotNull(song.artist.takeIf { it.isNotBlank() }, song.plays)
+                    .joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium,
                 color = palette.onBackgroundVariant,
                 maxLines = 1,

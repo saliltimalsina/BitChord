@@ -4,7 +4,8 @@
 # web changes go live on their own, and by dispatch from the upstream sync
 # (a push made with a workflow's token doesn't start other workflows).
 #
-# Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID.
+# Secret: VERCEL_TOKEN (https://vercel.com/account/tokens, then
+# `gh secret set VERCEL_TOKEN`). The project ids come from web/deploy/vercel-project.json.
 name: Personal site deploy
 
 on:
@@ -52,15 +53,16 @@ jobs:
           pnpm build:site
           cp deploy/vercel.json app/dist/vercel.json
 
+      # The project and team ids aren't secret; they live beside deploy.sh.
       - name: Deploy to Vercel
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::VERCEL_TOKEN is not set; see this workflow's header."
+            echo "::error::VERCEL_TOKEN is not set: make one at https://vercel.com/account/tokens and run 'gh secret set VERCEL_TOKEN'."
             exit 1
           fi
+          export VERCEL_ORG_ID=$(jq -r .orgId web/deploy/vercel-project.json)
+          export VERCEL_PROJECT_ID=$(jq -r .projectId web/deploy/vercel-project.json)
           npx --yes vercel@latest deploy web/app/dist --prod --yes --token "$VERCEL_TOKEN"
           echo "Deployed personal at $(git rev-parse --short HEAD) to music.saliltimalsina.com.np" >> "$GITHUB_STEP_SUMMARY"

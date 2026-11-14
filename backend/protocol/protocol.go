@@ -43,6 +43,10 @@ const (
 	ActionSetMaxMembers = "setMaxMembers"
 	ActionSetAutoplay = "setAutoplay"
 	ActionSetHostOnlyControl = "setHostOnlyControl"
+	// ActionSetOutput picks the one member whose device makes the sound; every
+	// other device becomes a remote. A null memberId goes back to everyone
+	// playing, which is what a party has always been.
+	ActionSetOutput = "setOutput"
 )
 
 // ControlActions are the actions a party's HostOnlyControl setting restricts to
@@ -62,6 +66,7 @@ var ControlActions = map[string]bool{
 	ActionNext:        true,
 	ActionPrevious:    true,
 	ActionSetAutoplay: true,
+	ActionSetOutput:   true,
 }
 
 // JoinRequest is the identity submitted when creating or joining a party.
@@ -69,6 +74,9 @@ type JoinRequest struct {
 	UserId      string  `json:"userId"`
 	DeviceId    string  `json:"deviceId"`
 	DisplayName string  `json:"displayName"`
+	// DeviceName is what the device picker shows, e.g. "Pixel 8 Pro" or
+	// "Chrome on macOS". Optional: an older client sends none.
+	DeviceName  string  `json:"deviceName,omitempty"`
 	AvatarUrl   *string `json:"avatarUrl,omitempty"`
 	MaxMembers  *int    `json:"maxMembers,omitempty"`
 	AutoplayEnabled *bool `json:"autoplayEnabled,omitempty"`
@@ -89,6 +97,11 @@ func (r *JoinRequest) Validate() error {
 	r.DisplayName = strings.TrimSpace(r.DisplayName)
 	if r.DisplayName == "" || len(r.DisplayName) > 80 {
 		return errors.New("displayName must be between 1 and 80 characters")
+	}
+
+	r.DeviceName = strings.TrimSpace(r.DeviceName)
+	if len(r.DeviceName) > 60 {
+		r.DeviceName = r.DeviceName[:60]
 	}
 
 	if r.AvatarUrl != nil {

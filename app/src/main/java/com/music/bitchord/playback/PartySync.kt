@@ -193,6 +193,12 @@ class PartySync(
     fun start() {
         jobs += scope.launch {
             ListenTogether.state
+                .map { it.outputElsewhere }
+                .distinctUntilChanged()
+                .collect { RemoteOutput.silenced = it }
+        }
+        jobs += scope.launch {
+            ListenTogether.state
                 // A new state, or leaving/joining. Not every field: this exists
                 // to react promptly to a control, and the round-trip counter
                 // changing is not one.
@@ -235,6 +241,7 @@ class PartySync(
     }
 
     fun stop() {
+        RemoteOutput.silenced = false
         jobs.forEach(Job::cancel)
         jobs.clear()
         publishJob?.cancel()

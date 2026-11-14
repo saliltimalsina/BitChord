@@ -155,6 +155,10 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
         if (CastController.state.value.casting) CastController.disconnect(resumeHere = true)
         AudioRouting.select(id)
         WearBridge.leaveWatchOutput()
+        // The same in a Listen Together session: the sound comes back here
+        // from whichever device in it was playing.
+        val party = ListenTogether.state.value
+        if (party.outputElsewhere) party.you?.memberId?.let(ListenTogether::setOutput)
     }
 
     override val watchOutput: StateFlow<WatchOutputUi> by lazy {
@@ -187,6 +191,8 @@ class AndroidPlayerHost(context: Context) : PlayerHost {
             .map { it.toPartyUi() }
             .stateIn(scope, SharingStarted.Eagerly, ListenTogether.state.value.toPartyUi())
     }
+
+    override fun selectPartyOutput(memberId: String?) = ListenTogether.setOutput(memberId)
 
     override suspend fun translateLyrics(
         trackId: String,
@@ -283,6 +289,8 @@ private fun ListenTogether.State.toPartyUi() = PartyUi(
     members = members,
     you = you,
     code = code,
+    outputMemberId = playback.outputMemberId,
+    supportsOutput = supportsOutput,
 )
 
 /**

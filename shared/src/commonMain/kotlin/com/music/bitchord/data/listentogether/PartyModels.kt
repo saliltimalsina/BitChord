@@ -40,6 +40,8 @@ data class PartyMember(
     val memberId: String,
     val userId: String = "",
     val displayName: String = "",
+    /** "Pixel 8 Pro", "Chrome on macOS" — what the device picker shows. Empty from an older client. */
+    val deviceName: String = "",
     val avatarUrl: String? = null,
     val isHost: Boolean = false,
     /** Whether they are currently holding a socket — not whether they are still in. */
@@ -91,6 +93,11 @@ data class PartyPlayback(
     val startedByName: String? = null,
     /** Party-wide setting so a connected listener can refill AutoPlay on host loss. */
     val autoplayEnabled: Boolean = false,
+    /**
+     * The one member whose device makes the sound, Spotify Connect style.
+     * Every other device follows silently as a remote. Null: every device plays.
+     */
+    val outputMemberId: String? = null,
     val updatedAtMs: Long = 0,
 )
 
@@ -179,6 +186,7 @@ data class JoinRequest(
     val avatarUrl: String? = null,
     val maxMembers: Int? = null,
     val autoplayEnabled: Boolean? = null,
+    val deviceName: String? = null,
 )
 
 @Serializable

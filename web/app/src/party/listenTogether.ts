@@ -67,6 +67,8 @@ export interface PartyState {
   activity: PartyActivity[];
   /** A resume this device accepted but may not perform yet (partySync owns it). */
   awaitingStart: boolean;
+  /** The server can pick one device to play (Connect); an older one sends no outputMemberId. */
+  supportsOutput: boolean;
 }
 
 const IDLE: PartyState = {
@@ -83,9 +85,19 @@ const IDLE: PartyState = {
   error: null,
   activity: [],
   awaitingStart: false,
+  supportsOutput: false,
 };
 
+/** Whether a raw snapshot or state frame came from a server that knows about output devices. */
+const knowsOutput = (raw: unknown): boolean => !!raw && typeof raw === 'object' && 'outputMemberId' in raw;
+
 export const useParty = create<PartyState>()(() => IDLE);
+
+/** True when another device in the session is the speaker and this one is a remote. */
+export function outputElsewhere(state: PartyState = useParty.getState()): boolean {
+  const out = state.playback.outputMemberId;
+  return !!state.code && !!out && out !== state.you?.memberId;
+}
 
 /** True for a listener in a party whose host has taken control of it. */
 export function controlsLocked(state: PartyState = useParty.getState()): boolean {
@@ -144,6 +156,14 @@ function deviceId(): string {
   return id;
 }
 
+/** What the device picker calls this browser: "Chrome on macOS". */
+function deviceName(): string {
+  const ua = navigator.userAgent;
+  const browser = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS X/.test(ua) ? 'macOS' : /Windows/.test(ua) ? 'Windows' : /Linux/.test(ua) ? 'Linux' : '';
+  return os ? `${browser} on ${os}` : browser;
+}
+
 async function sha256(value: string): Promise<string> {
   const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
   return [...bytes].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -163,6 +183,7 @@ async function identity(): Promise<Omit<JoinRequest, 'maxMembers' | 'autoplayEna
     userId: (await sha256(`${active.authUser}:${active.id}`)).slice(0, 32),
     deviceId: deviceId(),
     displayName: name,
+    deviceName: deviceName(),
     avatarUrl: active.avatarUrl?.startsWith('http') ? active.avatarUrl : null,
   };
 }
@@ -204,6 +225,7 @@ function adoptMembership(base: string, membership: PartyMembership): string {
     queue: party.queue,
     connection: 'connecting',
     activity: useParty.getState().activity,
+    supportsOutput: knowsOutput((membership.party as { playback?: unknown }).playback),
   });
   connect();
   return membership.code;
@@ -356,6 +378,8 @@ export const party = {
   kick: (memberId: string) => control('kick', { memberId }),
   setAutoplay: (enabled: boolean) => control('setAutoplay', { enabled }),
   setHostOnlyControl: (enabled: boolean) => control('setHostOnlyControl', { enabled }),
+  /** Moves the sound to one member's device (null: back to every device playing). */
+  setOutput: (memberId: string | null) => control('setOutput', { memberId }),
 };
 
 // ---- The playhead ------------------------------------------------------------------
@@ -506,6 +530,7 @@ function onFrame(text: string): void {
         queue: party.queue,
         connection: 'live',
         error: null,
+        supportsOutput: knowsOutput((frame.party as { playback?: unknown }).playback),
       });
       break;
     }
@@ -521,7 +546,7 @@ function onFrame(text: string): void {
       const playback = playbackOf(frame.playback as never);
       // Older than what's applied: two controllers pressing at once settle instead of fighting.
       if (playback.seq < state.playback.seq) return;
-      useParty.setState({ playback });
+      useParty.setState({ playback, supportsOutput: knowsOutput(frame.playback) });
       // A missed queue frame is healed on the next heartbeat rather than lived with.
       if (playback.queueSeq !== useParty.getState().queue.seq) send({ type: 'syncQueue' });
       break;

@@ -1,6 +1,7 @@
 package com.music.bitchord.data.listentogether
 
 import android.content.Context
+import android.os.Build
 import android.os.SystemClock
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -185,6 +186,8 @@ object ListenTogether {
         val roundTripMs: Long = 0,
         /** The last thing that went wrong, for the screen to show. */
         val error: String? = null,
+        /** The server can pick one device to play (Connect); an older one sends no outputMemberId. */
+        val supportsOutput: Boolean = false,
     ) {
         val inParty: Boolean get() = code != null
         val isFull: Boolean get() = members.size >= maxMembers
@@ -203,6 +206,10 @@ object ListenTogether {
          */
         val controlsLocked: Boolean
             get() = inParty && hostOnlyControl && you?.isHost != true
+
+        /** Another device in the session is the speaker; this one is a remote. */
+        val outputElsewhere: Boolean
+            get() = inParty && supportsOutput && playback.outputMemberId != null && playback.outputMemberId != you?.memberId
     }
 
     /** A refusal from the server, carrying the machine-readable half. */
@@ -821,6 +828,7 @@ object ListenTogether {
             JoinRequest(
                 who.userId, who.deviceId, who.name, who.avatar, maxMembers,
                 autoplayEnabled = AppSettings.autoplay.value,
+                deviceName = who.deviceName,
             ),
         )
 
@@ -878,7 +886,7 @@ object ListenTogether {
         refuseIfRecentlyKicked(cleaned)
         val membership = post(
             "$serverBase/api/parties/$cleaned/join",
-            JoinRequest(who.userId, who.deviceId, who.name, who.avatar),
+            JoinRequest(who.userId, who.deviceId, who.name, who.avatar, deviceName = who.deviceName),
         )
 
         withContext(NonCancellable) {
@@ -984,7 +992,7 @@ object ListenTogether {
             val targetJoinResult = runCatching {
                 post(
                     "$targetBase/api/parties/$cleanedTargetCode/join",
-                    JoinRequest(who.userId, who.deviceId, who.name, who.avatar),
+                    JoinRequest(who.userId, who.deviceId, who.name, who.avatar, deviceName = who.deviceName),
                 )
             }
 
@@ -1114,6 +1122,9 @@ object ListenTogether {
     fun kick(memberId: String) = control("kick") { put("memberId", memberId) }
 
     fun setAutoplay(enabled: Boolean) = control("setAutoplay") { put("enabled", enabled) }
+
+    /** Moves the sound to one member's device; null hands it back to every device. */
+    fun setOutput(memberId: String?) = control("setOutput") { put("memberId", memberId) }
 
     /** Host only, and refused by the server from anybody else. @see State.controlsLocked */
     fun setHostOnlyControl(enabled: Boolean) =
@@ -1330,6 +1341,8 @@ object ListenTogether {
                     queue = party.queue,
                     connection = Connection.LIVE,
                     error = null,
+                    supportsOutput = (frame["party"] as? JsonObject)
+                        ?.let { (it["playback"] as? JsonObject)?.containsKey("outputMemberId") } == true,
                 ) }
             }
 
@@ -1351,7 +1364,8 @@ object ListenTogether {
                 // is the guard that keeps two simultaneous controllers from
                 // sending each other backwards.
                 if (playback.seq < _state.value.playback.seq) return
-                _state.update { it.copy(playback = playback) }
+                val supportsOutput = (frame["playback"] as? JsonObject)?.containsKey("outputMemberId") == true
+                _state.update { it.copy(playback = playback, supportsOutput = supportsOutput) }
                 // The queue does not ride along with the state — only its
                 // sequence number does. Disagreeing with the copy held here
                 // means a queue frame was missed, which the heartbeat therefore
@@ -1450,6 +1464,7 @@ object ListenTogether {
         val deviceId: String,
         val name: String,
         val avatar: String?,
+        val deviceName: String = Build.MODEL.orEmpty().trim().take(60),
     )
 
     /**

@@ -101,6 +101,9 @@ type PlaybackState struct {
 	StartedBy     *string  `json:"startedBy"`
 	StartedByName *string  `json:"startedByName"`
 	AutoplayEnabled bool   `json:"autoplayEnabled"`
+	// OutputMemberId is the member whose device plays the audio, Spotify
+	// Connect style. Nil means every device plays — an ordinary party.
+	OutputMemberId *string `json:"outputMemberId"`
 }
 
 func NewPlaybackState() *PlaybackState {
@@ -465,8 +468,24 @@ func (p *PlaybackState) ToWire(serverMs int64) map[string]interface{} {
 		"startedBy":           p.StartedBy,
 		"startedByName":       p.StartedByName,
 		"autoplayEnabled":     p.AutoplayEnabled,
+		"outputMemberId":      p.OutputMemberId,
 		"updatedAtMs":         p.UpdatedAtMs,
 	}
+}
+
+// SetOutput moves the sound to another device without moving the music: the
+// playhead is carried over, and a playing track is re-anchored PlayLeadMs ahead
+// so the new device has time to buffer before it is due to be audible.
+func (p *PlaybackState) SetOutput(memberId *string, output *string) {
+	now := clock.NowMs()
+	p.PositionMs = p.PositionAt(now)
+	if p.IsPlaying {
+		p.AnchorMs = now + int64(config.PlayLeadMs)
+	} else {
+		p.AnchorMs = now
+	}
+	p.OutputMemberId = output
+	p.touch(memberId)
 }
 
 // SetAutoplay changes the party-wide AutoPlay choice. It belongs to playback
@@ -494,6 +513,7 @@ type Member struct {
 	UserId             string  `json:"userId"`
 	DeviceId           string  `json:"-"`
 	DisplayName        string  `json:"displayName"`
+	DeviceName         string  `json:"deviceName,omitempty"`
 	AvatarUrl          *string `json:"avatarUrl,omitempty"`
 	Token              string  `json:"-"`
 	IsHost             bool    `json:"isHost"`
@@ -511,6 +531,7 @@ func (m *Member) ToWire() map[string]interface{} {
 		"memberId":    m.MemberId,
 		"userId":      m.UserId,
 		"displayName": m.DisplayName,
+		"deviceName":  m.DeviceName,
 		"avatarUrl":   m.AvatarUrl,
 		"isHost":      m.IsHost,
 		"connected":   m.Connected,
@@ -670,6 +691,12 @@ func (p *Party) Remove(memberId string) *Member {
 		return nil
 	}
 	delete(p.Members, memberId)
+	// The speaker left: stop rather than carry on playing to nobody, and hand
+	// the sound back to every device so whoever presses play next hears it.
+	if out := p.Playback.OutputMemberId; out != nil && *out == memberId {
+		p.Playback.Pause(nil, nil)
+		p.Playback.OutputMemberId = nil
+	}
 	if m.IsHost && len(p.Members) > 0 {
 		for _, next := range p.Members {
 			next.IsHost = true

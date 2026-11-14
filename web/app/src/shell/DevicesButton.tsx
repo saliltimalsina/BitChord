@@ -65,7 +65,8 @@ export function DevicesButton({ className }: { className: string }) {
     <>
       <button
         id={DEVICES_BUTTON_ID}
-        className={className}
+        // Green rather than the key colour while another device plays: the same green as the tag.
+        className={`${className} aria-pressed:!text-green`}
         aria-label={label}
         title={label}
         aria-pressed={remote !== null}

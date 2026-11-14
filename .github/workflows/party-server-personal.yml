@@ -1,0 +1,45 @@
+# This fork's Listen Together server runs on Render's free plan
+# (https://bitchord-jam-salil.onrender.com), which sleeps after 15 minutes with
+# no traffic and drops every session when it does. This keeps it awake, and
+# redeploys it when the server code on personal changes.
+#
+# Secret: RENDER_DEPLOY_HOOK (Render → the service → Settings → Deploy Hook).
+name: Personal party server
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  push:
+    branches: [personal]
+    paths: ['backend/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  keep-awake:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - run: curl -fsS --retry 3 --retry-delay 20 --max-time 90 https://bitchord-jam-salil.onrender.com/healthz
+
+  deploy:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - run: go vet ./... && go test ./...
+        working-directory: backend
+      - name: Trigger the Render deploy
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        # Render's own auto-deploy also watches personal; the hook is a backstop.
+        run: |
+          if [ -z "$HOOK" ]; then echo "RENDER_DEPLOY_HOOK not set; relying on Render auto-deploy"; exit 0; fi
+          curl -fsS -X POST "$HOOK" > /dev/null

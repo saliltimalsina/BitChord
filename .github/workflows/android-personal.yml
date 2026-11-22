@@ -95,7 +95,9 @@ jobs:
           chmod +x gradlew
           # Without lintVital: three minutes of checks upstream's own CI runs on
           # every PR, repeated here for one phone.
-          ./gradlew --no-daemon --build-cache :app:testDevDebugUnitTest :app:assembleDevRelease \
+          # Untranslated upstream strings alone don't block it: see the script.
+          bash .github/personal-unit-tests.sh
+          ./gradlew --no-daemon --build-cache :app:assembleDevRelease \
             -x lintVitalDevRelease \
             -Pbitchord.personalBuild=${{ github.run_number }} \
             -Pbitchord.updateRepo=${{ github.repository }} \

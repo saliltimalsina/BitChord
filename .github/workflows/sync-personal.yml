@@ -124,7 +124,9 @@ jobs:
           chmod +x gradlew
           # The TV app builds from the phone's sources, so it's compiled too:
           # a phone-only change that leaves it unbuildable shows here.
-          ./gradlew --no-daemon :app:testDevDebugUnitTest :tv:compileDevDebugKotlin
+          # Untranslated upstream strings alone don't block it: see the script.
+          bash .github/personal-unit-tests.sh
+          ./gradlew --no-daemon :tv:compileDevDebugKotlin
 
       # Only now, with everything passing, does personal move.
       - name: Push personal

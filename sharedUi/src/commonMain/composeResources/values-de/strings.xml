@@ -201,4 +201,15 @@
     <string name="spotify_playlists">Spotify-Playlists</string>
     <string name="library_search_hint">Bibliothek durchsuchen</string>
     <string name="library_no_matches">Nichts in deiner Bibliothek passt zu „%1$s“</string>
+    <string name="add_to_queue">Zur Warteschlange hinzufügen</string>
+    <string name="queue_selected_count">%1$d ausgewählt</string>
+    <string name="queue_select_all">Alle auswählen</string>
+    <string name="queue_select">Auswählen</string>
+    <string name="queue_close_selection">Auswahl beenden</string>
+    <string name="queue_add_to_playlist">Playlist</string>
+    <string name="queue_download">Herunterladen</string>
+    <string name="queue_selection_remove">Entfernen</string>
+    <string name="queue_add_all_to_playlist">Alle zur Playlist hinzufügen</string>
+    <string name="mixes_yours">Deine Mixe</string>
+    <string name="mixes_none">Noch keine Mixe. Hör weiter Musik, dann erstellt YouTube Music welche für dich.</string>
 </resources>

@@ -70,10 +70,23 @@ function adopt(state: YtAuthState): void {
   lastIdentity = identity;
 }
 
+/** How long to give the extension before asking again when it first says signed out. */
+const SIGNED_OUT_RECHECK_MS = 1_500;
+/** While signed out, how often to look again for a session the browser does have. */
+const SIGNED_OUT_POLL_MS = 20_000;
+
 async function readAuth(refresh: boolean): Promise<YtAuthState> {
   const extension = detected();
   if (!extension || !supportsAuth(extension)) return SIGNED_OUT;
-  const state = await extension.bridge.call('yt.authState', { refresh }, { timeoutMs: 20_000 });
+  let state = await extension.bridge.call('yt.authState', { refresh }, { timeoutMs: 20_000 });
+  // Just after the browser or the extension's worker starts, its first cookie
+  // read can come back empty though the browser is signed in. Believed, that
+  // showed "Sign In" until the tab next regained focus: every time BitChord
+  // was opened. A second, fresh read a moment later gets the real answer.
+  if (!state.browserSignedIn && !refresh) {
+    await new Promise((resolve) => setTimeout(resolve, SIGNED_OUT_RECHECK_MS));
+    state = await extension.bridge.call('yt.authState', { refresh: true }, { timeoutMs: 20_000 });
+  }
   adopt(state);
   return state;
 }
@@ -97,6 +110,9 @@ export function useYtAuth(): YtAuthStatus {
     enabled,
     staleTime: 30_000,
     refetchOnWindowFocus: true,
+    // Signed out: keep looking, so a session the extension missed (or one made
+    // in another tab whose cookie event the worker slept through) still arrives.
+    refetchInterval: (q) => (q.state.data && !q.state.data.browserSignedIn ? SIGNED_OUT_POLL_MS : false),
     retry: 1,
   });
 

@@ -2,7 +2,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import type { DetectedExtension, YtAuthState } from '@bitchord/shared/bridge';
 import { queryClient } from '@/lib/queryClient';
-import { extensionQueryKey, useExtension } from './useExtension';
+import { extensionQuery, extensionQueryKey, useExtension } from './useExtension';
 
 /**
  * Who YouTube requests act as (prompt §5.3). The extension owns the session;
@@ -95,6 +95,12 @@ async function readAuth(refresh: boolean): Promise<YtAuthState> {
 export async function ensureYtAuth(): Promise<YtAuthState> {
   const cached = queryClient.getQueryData<YtAuthState>(ytAuthQueryKey);
   if (cached) return cached;
+  // At startup the extension may not have been found yet. Answering then
+  // gave readAuth's "signed out" and cached it as the session, so the page
+  // showed Sign In for a signed-in browser until that went stale: what
+  // reading the account's Recently played on launch did, every launch.
+  const extension = detected() ?? (await queryClient.fetchQuery(extensionQuery).catch(() => null));
+  if (!supportsAuth(extension)) return SIGNED_OUT;
   return queryClient.fetchQuery({ queryKey: ytAuthQueryKey, queryFn: () => readAuth(false), staleTime: 30_000 });
 }
 

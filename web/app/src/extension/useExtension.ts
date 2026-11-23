@@ -10,6 +10,9 @@ export type ExtensionStatus =
 
 export const extensionQueryKey = ['extension', 'detect'] as const;
 
+/** Shared by the hook and by code outside React that has to wait for the answer (ensureYtAuth). */
+export const extensionQuery = { queryKey: extensionQueryKey, queryFn: () => detect(), staleTime: 30_000 } as const;
+
 /** Re-pings after a miss: an MV3 service worker waking from sleep can miss the first one. */
 const RECHECKS = 4;
 const RECHECK_MS = 1500;
@@ -24,7 +27,7 @@ const SLOW_RECHECK_MS = 5000;
  * reload. A bridge is only a function over chrome.runtime, so it recovers on
  * its own when the worker is back; a removed extension fails each call instead.
  */
-async function detect(): Promise<DetectedExtension | null> {
+export async function detect(): Promise<DetectedExtension | null> {
   const known = queryClient.getQueryData<DetectedExtension | null>(extensionQueryKey) ?? null;
   const found = await detectExtension({ chromiumExtensionId: config.chromiumExtensionId });
   if (found || !known) return found;
@@ -39,9 +42,7 @@ async function detect(): Promise<DetectedExtension | null> {
  */
 export function useExtension(): ExtensionStatus {
   const query = useQuery({
-    queryKey: extensionQueryKey,
-    queryFn: detect,
-    staleTime: 30_000,
+    ...extensionQuery,
     gcTime: Infinity,
     retry: false,
     // Re-pinged when the tab comes back, so an extension updated or reloaded

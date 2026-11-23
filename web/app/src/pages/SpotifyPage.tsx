@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
+import { PrefetchLink } from '@/components/PrefetchLink';
 import { LibraryToolbar, useLibraryPrefs } from '@/components/music/LibraryToolbar';
 import { filterItems, sortItems } from '@/data/music/libraryView';
 import { SquareLockup } from '@/components/music/Lockups';
@@ -71,6 +72,13 @@ export default function SpotifyPage() {
     <>
       <PageHeader title="Spotify" />
       {all.length > 0 && <LibraryToolbar what="Spotify playlists" query={query} onQuery={setQuery} prefs={prefs} onPrefs={setPrefs} layouts={false} />}
+      {all.length > 0 && (
+        <p className="mx-(--body-gutter) mt-3 type-callout text-secondary">
+          <PrefetchLink to="/spotify/replace" className="text-key hover:underline">
+            Replace your YouTube Music playlists with these…
+          </PrefetchLink>
+        </p>
+      )}
       {!all.length && <EmptyState title="No playlists yet" />}
       {query.trim() && all.length > 0 && !items.length && (
         <p className="py-10 text-center type-body text-secondary">Nothing matches “{query.trim()}”.</p>

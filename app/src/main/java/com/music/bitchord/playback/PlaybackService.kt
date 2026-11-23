@@ -4317,7 +4317,23 @@ class PlaybackService : MediaLibraryService() {
     )
 
     private fun registerCurrentPlay() {
-        player?.currentMediaItem?.mediaId?.let(PlaybackTracker::onPlaying)
+        val item = player?.currentMediaItem ?: return
+        // The playlist or album it plays out of goes into the history entry, so
+        // the account's Recently played (and every signed-in device) sees it.
+        val song = item.toSong()
+        val sourceId = song.playbackSourceId.takeIf { song.playbackSourceType == PlaybackSourceType.BROWSE }
+        val listId = com.music.bitchord.data.innertube.Innertube.historyListId(
+            sourceId,
+            when {
+                sourceId == null -> null
+                sourceId.startsWith("MPREb") -> YtMusicRepository.albumListId(sourceId)
+                // A Spotify playlist plays as its YouTube Music copy, when it has one.
+                sourceId.startsWith(com.music.bitchord.data.spotify.SPOTIFY_PAGE_PREFIX) ->
+                    com.music.bitchord.data.RecentPlaylists.youtubeCopyOf(song.playbackSource)?.playlistId
+                else -> null
+            },
+        )
+        PlaybackTracker.onPlaying(item.mediaId, listId)
     }
 
     /**

@@ -38,7 +38,7 @@ export default function AlbumPage() {
   const tracks = data.tracks;
   // Album tracks carry no artist or artwork of their own; the queue credits the album's.
   const context = {
-    source: { title: data.title, type: 'album' as const, id: data.id },
+    source: { title: data.title, type: 'album' as const, id: data.id, playlistId: data.playlistId },
     fallbackArtwork: data.thumbnail,
     fallbackArtists: data.artists,
   };

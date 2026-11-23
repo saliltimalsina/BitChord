@@ -1021,7 +1021,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val identity = listenerKey()
         _playlistsLoading.value = true
         viewModelScope.launch {
-            YtMusicRepository.userPlaylists().onSuccess { if (identity == listenerKey()) _playlists.value = it }
+            YtMusicRepository.userPlaylists().onSuccess {
+                RecentPlaylists.setLibraryPlaylists(it)
+                if (identity == listenerKey()) _playlists.value = it
+            }
             if (identity == listenerKey()) _playlistsLoading.value = false
         }
     }
@@ -2352,8 +2355,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var lastOwnShelves: List<HomeShelf> = emptyList()
 
     /**
-     * Recent playlists: the lists opened lately on this device
-     * ([RecentPlaylists]), in the rows-of-four pager Recents and Listen again
+     * Recent playlists: the lists played from lately, the account's merged with
+     * this device's ([RecentPlaylists]), in the rows-of-four pager Recents and Listen again
      * use, right under From Spotify.
      */
     private fun recentPlaylistsShelf(): HomeShelf? =
@@ -2373,7 +2376,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun rememberPlayedList(song: Song) {
         if (song.playbackSourceType != PlaybackSourceType.BROWSE) return
-        val browseId = song.playbackSourceId ?: return
+        val sourceId = song.playbackSourceId ?: return
+        // A Spotify playlist with a YouTube copy is kept as the copy: the list
+        // its plays are filed under, so it reaches the other devices.
+        val copy = if (sourceId.startsWith(SPOTIFY_PAGE_PREFIX)) RecentPlaylists.youtubeCopyOf(song.playbackSource) else null
+        if (copy != null) {
+            RecentPlaylists.remember(copy.browseId, copy.title, copy.subtitle, copy.thumbnailUrl)
+            return
+        }
+        val browseId = sourceId
         val isList = browseId.startsWith(SPOTIFY_PAGE_PREFIX) ||
             (browseTypeOf(browseId).let { it == BrowseType.PLAYLIST || it == BrowseType.ALBUM } &&
                 !browseId.startsWith(LocalGroups.PREFIX))

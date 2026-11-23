@@ -745,9 +745,19 @@ object YtMusicRepository {
      * first response. The rest arrives behind a page that is by then already
      * being read — see [moreSongs].
      */
+    /**
+     * The `OLAK5uy_…` list behind each `MPREb…` album opened this run, so a play
+     * from the album can name it in its history entry (PlaybackTracker): the
+     * queue only knows the album by its browse id.
+     */
+    private val albumLists = ConcurrentHashMap<String, String>()
+
+    fun albumListId(browseId: String): String? = albumLists[browseId]
+
     suspend fun browseSongs(browseId: String): Result<SongPage> = call("browse:$browseId") {
         val response = Innertube.browse(browseId)
         val page = if (browseId.startsWith("MPREb")) {
+            InnertubeParser.parseAlbumPlaylistId(response)?.let { albumLists[browseId] = it.removePrefix("VL") }
             albumPageOf(response)
         } else {
             pageOf(response)
@@ -1066,6 +1076,19 @@ object YtMusicRepository {
     suspend fun userPlaylists(): Result<List<UserPlaylist>> = call("playlists") {
         InnertubeParser.parseUserPlaylists(libraryItemsPaged(LIBRARY_PLAYLISTS))
     }
+
+    /**
+     * The playlists and albums the account last played from, newest first, on
+     * any device: Library › Recently played (its sort menu's own request). A
+     * play counts toward a list when its history entry names it
+     * (PlaybackTracker's list id). Library items only.
+     */
+    suspend fun playedLists(): Result<List<ShelfItem>> = call("playedLists") {
+        InnertubeParser.parseLibraryItems(Innertube.browse(LIBRARY_LANDING, params = RECENTLY_PLAYED_PARAMS))
+    }
+
+    private const val LIBRARY_LANDING = "FEmusic_library_landing"
+    private const val RECENTLY_PLAYED_PARAMS = "ggMGKgQIBRABoAYB"
 
     /**
      * All playlists in user library (including Liked Music and saved playlists).

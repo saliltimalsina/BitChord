@@ -8,6 +8,8 @@ import { queryClient } from '@/lib/queryClient';
 import { getAudio, onTrackEnded, usePlayer } from '@/state/player';
 import { getSignedInnertube } from './youtube/innertube';
 import { trackLog } from './trackLog';
+import type { QueueSource } from './queue/timeline';
+import { playedListRegistered, youtubeCopyOf } from '@/state/playedLists';
 
 /** Settings › Share Listening Activity: whether plays go to the account's YouTube Music history. On by default, as on the phone. */
 export const useHistorySettings = create<{ share: boolean; setShare: (on: boolean) => void }>()(
@@ -68,19 +70,46 @@ function extensionSupportsStats(): boolean {
 type Raw = Record<string, unknown>;
 const baseUrl = (tracking: Raw, key: string) => ((tracking[key] as Raw | undefined)?.baseUrl as string | undefined) ?? null;
 
+/** A YouTube list id: playlists (PL…), albums (OLAK5uy_…), Liked Music (LM), radios and mixes (RD…). */
+const YT_LIST = /^(PL|OLAK5uy_|RD|LM$)[A-Za-z0-9_-]*$/;
+
+/**
+ * The YouTube list a play comes from, for the history entry. With it, the play
+ * counts toward that playlist or album in the account's Library › Recently
+ * played, as in the official app, which is what lets the phone and web share
+ * one Recent playlists list. A Spotify playlist gives its YouTube copy's list
+ * (Spotify › Replace), else null, as downloaded ones do.
+ */
+export function historyListId(source: QueueSource | null | undefined): string | null {
+  if (!source) return null;
+  // A Spotify playlist plays as its YouTube Music copy, when it has one.
+  const copy = source.id?.startsWith('spotify:') ? youtubeCopyOf(source.title)?.id : null;
+  const raw = copy ?? source.playlistId ?? (source.type === 'playlist' || source.type === 'radio' ? source.id : null);
+  const id = raw?.replace(/^VL/, '') ?? '';
+  return YT_LIST.test(id) ? id : null;
+}
+
+function currentListId(): string | null {
+  const { queue, index } = usePlayer.getState();
+  return historyListId(queue?.[index]?.source);
+}
+
 /** The tracking block for one play; null when YouTube declines to issue one (a verdict, not a failure). */
-async function fetchTracking(videoId: string): Promise<Tracking | null> {
+async function fetchTracking(videoId: string, listId: string | null): Promise<Tracking | null> {
   const yt = await getSignedInnertube();
   const signatureTimestamp = yt.session.player?.signature_timestamp;
   if (!signatureTimestamp) throw new Error('no signature timestamp yet');
   const response = await yt.actions.execute('/player', {
     videoId,
+    // YouTube then writes list= into the tracking URLs it hands back, and the
+    // play is filed under that list.
+    ...(listId && { playlistId: listId }),
     contentCheckOk: true,
     racyCheckOk: true,
     playbackContext: {
       contentPlaybackContext: {
         html5Preference: 'HTML5_PREF_WANTS',
-        referer: `https://music.youtube.com/watch?v=${videoId}`,
+        referer: `https://music.youtube.com/watch?v=${videoId}${listId ? `&list=${listId}` : ''}`,
         signatureTimestamp,
       },
     },
@@ -145,17 +174,18 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let session: Session | null = null;
 let opening: string | null = null;
 
-async function open(videoId: string): Promise<void> {
+async function open(videoId: string, listId: string | null): Promise<void> {
   for (let attempt = 1; attempt <= OPEN_ATTEMPTS; attempt++) {
     if (opening !== videoId) return;
     try {
-      const tracking = await fetchTracking(videoId);
+      const tracking = await fetchTracking(videoId, listId);
       if (!tracking || opening !== videoId) return;
       const cpn = newCpn();
       const status = await ping(await statsUrl(tracking.playback, cpn));
       if (opening !== videoId) return;
       session = { videoId, cpn, tracking, reported: 0, flushingTo: 0, atrSent: false, heard: 0 };
-      trackLog.i(`history: play registered for ${videoId} (HTTP ${status})`);
+      trackLog.i(`history: play registered for ${videoId}${listId ? ` from ${listId}` : ''} (HTTP ${status})`);
+      if (listId) playedListRegistered();
       // Recently Played on Home reads that history.
       setTimeout(() => void queryClient.invalidateQueries({ queryKey: ['music', 'library', 'recent'] }), 3_000);
       return;
@@ -205,8 +235,9 @@ function sample(): void {
     if (opening === videoId || !VIDEO_ID.test(videoId)) return;
     if (!useHistorySettings.getState().share || !extensionSupportsStats()) return;
     opening = videoId;
+    const listId = currentListId();
     void ensureYtAuth()
-      .then((auth) => (auth.signedIn ? open(videoId) : undefined))
+      .then((auth) => (auth.signedIn ? open(videoId, listId) : undefined))
       .catch(() => undefined)
       .finally(() => {
         if (opening === videoId) opening = null;

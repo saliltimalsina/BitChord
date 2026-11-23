@@ -233,6 +233,27 @@ async function libraryContinuation(token: string, title: string): Promise<Paged<
   };
 }
 
+/** Library sorted by Recently played (the sort menu's own request). */
+const RECENTLY_PLAYED_PARAMS = 'ggMGKgQIBRABoAYB';
+
+/**
+ * The playlists and albums the account last played from, newest first, on any
+ * device: Library › Recently played. A play counts toward a list when its
+ * history entry names it (historyReporting's playlistId). Library items only.
+ */
+export async function fetchPlayedLists(): Promise<MusicItem[]> {
+  const yt = await getSignedInnertube();
+  const { YTNodes } = await import('youtubei.js/web');
+  const response = await yt.actions.execute('/browse', {
+    browseId: 'FEmusic_library_landing',
+    params: RECENTLY_PLAYED_PARAMS,
+    client: 'YTMUSIC',
+    parse: true,
+  });
+  const grids = response.contents_memo?.getType(YTNodes.Grid) ?? [];
+  return mapBrowse({ sections: grids }, '').grid.filter((item) => item.kind === 'playlist' || item.kind === 'album');
+}
+
 /** The user's playlists for the sidebar, in YouTube's order (most recent activity first). */
 export async function fetchLibraryPlaylists(): Promise<MusicItem[]> {
   const { data } = await fetchLibrary('playlists');

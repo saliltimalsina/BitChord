@@ -5,7 +5,13 @@ import { create } from 'zustand';
 const pings: string[] = [];
 const ended = new Set<() => void>();
 const audio = { currentTime: 0 };
-const player = create<{ nowPlaying: { videoId: string } | null; status: string }>()(() => ({ nowPlaying: null, status: 'idle' }));
+const player = create<{ nowPlaying: { videoId: string } | null; status: string; queue: unknown[]; index: number }>()(() => ({
+  nowPlaying: null,
+  status: 'idle',
+  queue: [],
+  index: -1,
+}));
+const playerBodies: Record<string, unknown>[] = [];
 
 vi.mock('@/state/player', () => ({
   usePlayer: player,
@@ -28,12 +34,16 @@ vi.mock('@/extension/useYtAuth', () => ({ ensureYtAuth: async () => ({ signedIn:
 vi.mock('@/lib/queryClient', () => ({
   queryClient: { getQueryData: () => ({ info: { capabilities: ['yt.stats'] } }), invalidateQueries: async () => {} },
 }));
+vi.mock('@/state/playedLists', () => ({
+  playedListRegistered: () => {},
+  youtubeCopyOf: (title: string) => (title === 'Copied' ? { id: 'VLPLcopy' } : null),
+}));
 vi.mock('youtubei.js/web', () => ({ Constants: { CLIENTS: { YTMUSIC: { VERSION: '1.0' } } } }));
 vi.mock('./youtube/innertube', () => ({
   getSignedInnertube: async () => ({
     session: { player: { signature_timestamp: 1 }, context: { client: { hl: 'en', gl: 'US', visitorData: 'v' } } },
     actions: {
-      execute: async () => ({
+      execute: async (_: string, body: Record<string, unknown>) => (playerBodies.push(body), {
         data: {
           playbackTracking: {
             videostatsPlaybackUrl: { baseUrl: 'https://s.youtube.com/api/stats/playback' },
@@ -45,7 +55,7 @@ vi.mock('./youtube/innertube', () => ({
   }),
 }));
 
-const { startHistoryReporting } = await import('./historyReporting');
+const { startHistoryReporting, historyListId } = await import('./historyReporting');
 const playbacks = () => pings.filter((u) => u.includes('/playback')).length;
 
 describe('history reporting', () => {
@@ -66,5 +76,31 @@ describe('history reporting', () => {
     player.setState({ status: 'buffering' });
     player.setState({ status: 'playing' });
     await vi.waitFor(() => expect(playbacks()).toBe(2));
+  });
+
+  it('names the YouTube list a play comes from', async () => {
+    stop = startHistoryReporting();
+    player.setState({
+      queue: [{ source: { title: 'SED LOKI', type: 'playlist', id: 'VLPLW-s3dqd4tck' } }],
+      index: 0,
+      nowPlaying: { videoId: 'lmnopqrstuv' },
+      status: 'playing',
+    });
+    await vi.waitFor(() => expect(playerBodies.some((b) => b.videoId === 'lmnopqrstuv')).toBe(true));
+    expect(playerBodies.find((b) => b.videoId === 'lmnopqrstuv')?.playlistId).toBe('PLW-s3dqd4tck');
+  });
+});
+
+describe('historyListId', () => {
+  it('maps queue sources to YouTube lists', () => {
+    expect(historyListId({ title: '', type: 'playlist', id: 'PLabc' })).toBe('PLabc');
+    expect(historyListId({ title: '', type: 'playlist', id: 'VLLM' })).toBe('LM');
+    expect(historyListId({ title: '', type: 'album', id: 'MPREb_x', playlistId: 'OLAK5uy_abc' })).toBe('OLAK5uy_abc');
+    expect(historyListId({ title: '', type: 'album', id: 'MPREb_x' })).toBeNull();
+    expect(historyListId({ title: '', type: 'radio', id: 'RDAMVMabcdefghijk' })).toBe('RDAMVMabcdefghijk');
+    expect(historyListId({ title: '', type: 'playlist', id: 'spotify:37i9dQ' })).toBeNull();
+    expect(historyListId({ title: 'Copied', type: 'playlist', id: 'spotify:37i9dQ' })).toBe('PLcopy');
+    expect(historyListId({ title: '', type: 'search', id: 'PLabc' })).toBeNull();
+    expect(historyListId(null)).toBeNull();
   });
 });

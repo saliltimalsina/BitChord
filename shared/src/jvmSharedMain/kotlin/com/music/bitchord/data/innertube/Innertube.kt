@@ -775,6 +775,8 @@ object Innertube {
     )
 
     /**
+     * [listId] is the YouTube list the play comes from, if any; see [historyListId].
+     *
      * Player response fetched *with* the session cookie, purely to read back
      * `playbackTracking` — [player] deliberately skips auth so its device
      * clients are answered at all, so it never sees this block. Null for
@@ -798,11 +800,20 @@ object Innertube {
      * `html5Preference` — the block comes back. With every one of those and a
      * timestamp one revision old, it does not.
      */
-    suspend fun playbackTracking(videoId: String, signatureTimestamp: Int?): PlaybackTracking? {
+    suspend fun playbackTracking(
+        videoId: String,
+        signatureTimestamp: Int?,
+        listId: String? = null,
+    ): PlaybackTracking? {
         if (cookie == null) return null
         ensureSessionScope()
         val response = postMusic("player") {
             put("videoId", videoId)
+            // The list the play comes from, as the official client sends it.
+            // YouTube then writes `list=` into the tracking URLs it hands back,
+            // and files the play under that playlist or album: Library ›
+            // Recently played moves it up, on every device signed in.
+            listId?.let { put("playlistId", it) }
             put("contentCheckOk", true)
             put("racyCheckOk", true)
             // Real clients always describe where playback is happening; the
@@ -810,7 +821,7 @@ object Innertube {
             putJsonObject("playbackContext") {
                 putJsonObject("contentPlaybackContext") {
                     put("html5Preference", "HTML5_PREF_WANTS")
-                    put("referer", "$MUSIC_ORIGIN/watch?v=$videoId")
+                    put("referer", "$MUSIC_ORIGIN/watch?v=$videoId${listId?.let { "&list=$it" }.orEmpty()}")
                     signatureTimestamp?.let { put("signatureTimestamp", it) }
                 }
             }
@@ -836,6 +847,21 @@ object Innertube {
                 ?.get("elapsedMediaTimeSeconds")?.jsonPrimitive?.contentOrNull
                 ?.toLongOrNull() ?: DEFAULT_ATR_SECONDS,
         )
+    }
+
+    private val YT_LIST = Regex("""(PL|OLAK5uy_|RD)[A-Za-z0-9_-]*|LM""")
+
+    /**
+     * The YouTube list a song in the queue is playing out of, for its history
+     * entry: [sourceId] is its queue source's browse id (`VLPL…`, `VLLM`), and
+     * [albumListId] the `OLAK5uy_…` list behind an `MPREb…` album, when known.
+     * Null for anything YouTube has no list for: Spotify, downloads, local
+     * folders, search.
+     */
+    fun historyListId(sourceId: String?, albumListId: String? = null): String? {
+        val raw = albumListId ?: sourceId ?: return null
+        val id = raw.removePrefix("VL")
+        return id.takeIf { YT_LIST.matches(it) }
     }
 
     /** What YouTube Music itself schedules `atr` for, when it doesn't say. */

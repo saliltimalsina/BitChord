@@ -23,6 +23,11 @@ export interface QueueSource {
   title: string;
   type: QueueSourceType;
   id?: string | null;
+  /**
+   * The YouTube list this plays from, when it differs from [id]: an album's
+   * page is MPREb_…, but YouTube knows the album as its OLAK5uy_… list.
+   */
+  playlistId?: string | null;
 }
 
 export interface QueueEntry {

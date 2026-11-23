@@ -42,7 +42,7 @@ function useLibraryShelves(): { playlists: MusicItem[]; albums: MusicItem[] } {
 }
 
 /** Spotify, once connected: the daylist first (when Spotify has made one), then the library's playlists. */
-/** Playlists and albums played from lately in this browser, newest first (state/playedLists). */
+/** Playlists and albums played from lately: the account's Recently played, merged with this browser's (state/playedLists). */
 function useRecentLists(): MusicItem[] {
   const played = usePlayedLists((s) => s.items);
   return useMemo(() => played.map((l) => ({ artists: [], album: null, durationSec: null, explicit: false, wide: false, ...l })), [played]);

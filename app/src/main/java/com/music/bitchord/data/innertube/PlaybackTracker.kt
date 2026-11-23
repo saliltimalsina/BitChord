@@ -110,7 +110,7 @@ object PlaybackTracker {
      * queue moves on. A no-op while the same track is already being tracked, so
      * a pause/resume does not register a second play.
      */
-    fun onPlaying(videoId: String) {
+    fun onPlaying(videoId: String, listId: String? = null) {
         if (!VIDEO_ID.matches(videoId)) return
         if (Innertube.cookie == null) return
         // A downloaded track plays perfectly well with the radio off — the
@@ -126,7 +126,7 @@ object PlaybackTracker {
         opening = videoId
         scope.launch(TrackLog.about(videoId)) {
             try {
-                openWithRetries(videoId)
+                openWithRetries(videoId, listId)
             } finally {
                 if (opening == videoId) opening = null
             }
@@ -218,11 +218,11 @@ object PlaybackTracker {
      * YouTube declining to issue a tracking block for this track at all. Only
      * genuine failures are repeated.
      */
-    private suspend fun openWithRetries(videoId: String) {
+    private suspend fun openWithRetries(videoId: String, listId: String?) {
         repeat(OPEN_ATTEMPTS) { attempt ->
             if (opening != videoId) return
             val settled = try {
-                open(videoId)
+                open(videoId, listId)
             } catch (e: CancellationException) {
                 // Not a failure, and not ours to swallow: the only thing that
                 // cancels this is the tracker's own scope going away.
@@ -244,7 +244,7 @@ object PlaybackTracker {
      * @return whether there is anything left to try. False means the attempt is
      *   worth repeating — the answer was a failure, not a verdict.
      */
-    private suspend fun open(videoId: String): Boolean = lock.withLock {
+    private suspend fun open(videoId: String, listId: String?): Boolean = lock.withLock {
         // The one thing the tracking request cannot be answered without. Fetched
         // through [StreamResolver] so it is shared with — and usually already
         // warmed by — the resolve that is starting this very track.
@@ -253,7 +253,7 @@ object PlaybackTracker {
             TrackLog.w(TAG, "no signature timestamp yet; retrying history for $videoId")
             return@withLock false
         }
-        val tracking = Innertube.playbackTracking(videoId, signatureTimestamp)
+        val tracking = Innertube.playbackTracking(videoId, signatureTimestamp, listId)
         if (tracking == null) {
             TrackLog.d(TAG, "no playback tracking for $videoId (guest, or the player declined)")
             // A verdict, not a failure — asking again with the same timestamp
@@ -264,7 +264,7 @@ object PlaybackTracker {
         val status = Innertube.pingPlayback(tracking.playbackUrl, fresh.cpn)
         session = fresh
         _registeredPlays.value++
-        TrackLog.d(TAG, "history entry created for $videoId (HTTP $status)")
+        TrackLog.d(TAG, "history entry created for $videoId${listId?.let { " from $it" }.orEmpty()} (HTTP $status)")
         true
     }
 

@@ -52,7 +52,7 @@ export async function loadCollection(item: CollectionItem, onProgress?: (done: n
       const album = await queryClient.fetchQuery(albumQuery(item.id));
       return {
         tracks: album.tracks,
-        context: { source: { title: album.title, type: 'album', id: album.id }, fallbackArtwork: album.thumbnail, fallbackArtists: album.artists },
+        context: { source: { title: album.title, type: 'album', id: album.id, playlistId: album.playlistId }, fallbackArtwork: album.thumbnail, fallbackArtists: album.artists },
         missing: 0,
       };
     }

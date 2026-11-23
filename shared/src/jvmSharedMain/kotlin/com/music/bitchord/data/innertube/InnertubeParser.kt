@@ -24,6 +24,7 @@ import com.music.bitchord.data.model.UserPlaylist
 import com.music.bitchord.data.model.VersionPair
 import com.music.bitchord.data.model.VersionTimeMap
 import com.music.bitchord.data.model.WatchTarget
+import com.music.bitchord.data.sources.TrackMatcher
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -56,7 +57,61 @@ object InnertubeParser {
      */
     fun parseSearch(response: JsonObject): List<SearchResult> = parseSearchPage(response).rows
 
-    fun parseSearchPage(response: JsonObject, includeVideos: Boolean = false): SearchPage {
+    /**
+     * [includeVideos] reads the Videos tab: video rows only. [mixed] reads the
+     * All tab, where a video is the release rather than a second copy of one
+     * when it is the artist's own (OMV) and no song on the page is the same
+     * track: a release out only as its music video would otherwise not be on
+     * the All tab at all. Fan uploads (UGC: covers, live sets, TV
+     * performances) stay on the Videos tab unless [query] asks for a take.
+     * Neither: songs only, as the Songs tab and every matcher expects.
+     */
+    fun parseSearchPage(
+        response: JsonObject,
+        includeVideos: Boolean = false,
+        mixed: Boolean = false,
+        query: String = "",
+    ): SearchPage {
+        val page = parseSearchRows(response, includeVideos, mixed)
+        return if (mixed && !includeVideos) SearchPage(balanceVideos(page.rows, query), page.continuation) else page
+    }
+
+    /** Videos on the All tab: at most this many, more when the query asks for takes. */
+    private const val MIXED_VIDEOS = 2
+    private const val MIXED_TAKES = 4
+    private val ASKS_FOR_A_TAKE = Regex(
+        "\\b(live|cover|covers|remix|acoustic|unplugged|karaoke|instrumental|session|concert|lofi|slowed|reverb)\\b",
+        RegexOption.IGNORE_CASE,
+    )
+
+    private fun balanceVideos(rows: List<SearchResult>, query: String): List<SearchResult> {
+        val wantsTakes = ASKS_FOR_A_TAKE.containsMatchIn(query)
+        val songs = rows.mapNotNull { row ->
+            when (row) {
+                is SearchResult.Track -> row.song.takeIf { !it.isVideo }
+                is SearchResult.TopTrack -> row.song.takeIf { !it.isVideo }
+                is SearchResult.Browse -> null
+            }
+        }
+        var videos = 0
+        val limit = if (wantsTakes) MIXED_TAKES else MIXED_VIDEOS
+        return rows.filter { row ->
+            val song = when (row) {
+                is SearchResult.Track -> row.song
+                is SearchResult.TopTrack -> row.song
+                is SearchResult.Browse -> return@filter true
+            }
+            if (!song.isVideo) return@filter true
+            // YouTube's promoted card is its own pick; only fan uploads are held back.
+            val keep = (!song.isFanUpload || wantsTakes) &&
+                (row is SearchResult.TopTrack || songs.none { TrackMatcher.matches(song, it.title, it.artist) }) &&
+                videos < limit
+            if (keep) videos++
+            keep
+        }
+    }
+
+    private fun parseSearchRows(response: JsonObject, includeVideos: Boolean, mixed: Boolean): SearchPage {
         // The "All" tab spreads results across several shelf types (card shelf
         // for the top result, then one shelf per category). Its promoted top
         // result lives on the card itself, not in a responsive row, so read it
@@ -86,9 +141,9 @@ object InnertubeParser {
             topResults.forEach { result ->
                 when (result) {
                     is SearchResult.TopTrack -> {
-                        // The mixed All page stays music-only; music-video uploads
-                        // belong exclusively to the dedicated Videos tab.
-                        if (!result.song.isVideo && seen.add("v:${result.song.videoId}")) add(result)
+                        // Music-video uploads belong to the Videos tab, except
+                        // on the All tab, where balanceVideos weighs them.
+                        if ((mixed || !result.song.isVideo) && seen.add("v:${result.song.videoId}")) add(result)
                     }
                     is SearchResult.Browse -> {
                         if (seen.add("b:${result.item.browseId}")) add(result)
@@ -106,9 +161,10 @@ object InnertubeParser {
                 } else {
                     val fallback = cardCredits.firstOrNull { it.first === renderer }?.second
                     parseResponsiveListItem(renderer, fallback ?: Credits())?.let { song ->
-                        // The mixed All page stays music-only; the dedicated Videos
-                        // filter is the one place music-video uploads belong.
-                        if (song.isVideo == includeVideos && seen.add("v:${song.videoId}")) {
+                        // The Videos tab is videos only, the Songs tab songs only;
+                        // the All tab takes both and balanceVideos weighs them.
+                        val wanted = if (mixed && !includeVideos) true else song.isVideo == includeVideos
+                        if (wanted && seen.add("v:${song.videoId}")) {
                             add(SearchResult.Track(song))
                         }
                     }
@@ -796,6 +852,10 @@ object InnertubeParser {
             isVideo = !episode && (rowType == "video" || thumbnails.isNotSquare()),
             plays = plays,
             isExplicit = renderer.hasExplicitBadge(),
+            // The play button's and the title's watch endpoints both say; the
+            // menu's (radio, share) are left out of the reading.
+            isFanUpload = (renderer.o("overlay").findString("musicVideoType")
+                ?: renderer["flexColumns"].findString("musicVideoType")) == MUSIC_VIDEO_TYPE_UGC,
             // Extract the "Remove from history" feedback token from the row's menu, if present.
             feedbackToken = extractFeedbackToken(renderer),
         )
@@ -916,6 +976,8 @@ object InnertubeParser {
             albumName = credits.albumName,
             isVideo = rowType == "video" || thumbnails.isNotSquare(),
             isExplicit = renderer["subtitleBadges"].hasExplicitBadge(),
+            isFanUpload = (renderer.o("onTap").findString("musicVideoType")
+                ?: renderer.o("title").findString("musicVideoType")) == MUSIC_VIDEO_TYPE_UGC,
         )
     }
 
@@ -1323,6 +1385,7 @@ object InnertubeParser {
             .o("watchEndpointMusicConfig").s("musicVideoType")
 
     private const val MUSIC_VIDEO_TYPE_ATV = "MUSIC_VIDEO_TYPE_ATV"
+    private const val MUSIC_VIDEO_TYPE_UGC = "MUSIC_VIDEO_TYPE_UGC"
 
     /**
      * Tracks of a watch queue (`next` response) — the AutoPlay radio mix.

@@ -83,7 +83,7 @@ export async function fetchCategories(): Promise<CategoryGroup[]> {
 
 export async function fetchSearch(query: string): Promise<SearchResults> {
   const yt = await getMusicClient();
-  return mapSearch(await yt.music.search(query));
+  return mapSearch(await yt.music.search(query), query);
 }
 
 /** YouTube Music's Songs shelf for [query]: what an import or a match is chosen from. */
@@ -91,6 +91,14 @@ export async function searchSongs(query: string): Promise<Track[]> {
   const yt = await getMusicClient();
   const search = await yt.music.search(query, { type: 'song' });
   const shelf = search.songs ?? search.contents?.find((c) => c.type === 'MusicShelf');
+  return mapPlaylistTracks((shelf as { contents?: readonly unknown[] } | undefined)?.contents ?? []);
+}
+
+/** YouTube Music's Videos shelf for [query]: a match's second chance, for a release that is only a video. */
+export async function searchVideos(query: string): Promise<Track[]> {
+  const yt = await getMusicClient();
+  const search = await yt.music.search(query, { type: 'video' });
+  const shelf = search.videos ?? search.contents?.find((c) => c.type === 'MusicShelf');
   return mapPlaylistTracks((shelf as { contents?: readonly unknown[] } | undefined)?.contents ?? []);
 }
 

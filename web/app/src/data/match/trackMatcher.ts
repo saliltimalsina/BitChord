@@ -180,6 +180,34 @@ export function best<T extends MatchCandidate>(candidates: T[], target: MatchTar
   return ranked(candidates, target)[0] ?? null;
 }
 
+/**
+ * TrackMatcher.bestOfficialAudioForVideo: a video and the song it promotes
+ * can differ by well over a minute (an intro, an outro, dialogue), which
+ * score() must reject. When the relationship is already established some
+ * other way (an official video, the song not on the catalogue), an exact
+ * title, identical version markers and a shared artist are enough; length
+ * only ranks equivalent candidates and never vetoes one. A cover, remix or
+ * karaoke take still cannot pass for the recording.
+ */
+export function bestOfficialAudioForVideo<T extends MatchCandidate>(candidates: T[], target: MatchTarget): T | null {
+  const wanted = parseTitle(target.title, target.artist ?? '');
+  if (!wanted.core) return null;
+  let winner: { candidate: T; value: number } | null = null;
+  for (const candidate of candidates) {
+    const got = parseTitle(candidate.title, candidate.artist);
+    if (wanted.core !== got.core || !sameSet(wanted.versions, got.versions)) continue;
+    const artist = artistScore(target.artist ?? '', candidate.artist);
+    if (artist === null) continue;
+    const expected = target.durationSec ?? null;
+    const actual = positive(candidate.durationSec);
+    const duration = expected === null ? 0 : actual === null ? -120 : -Math.abs(expected - actual);
+    const value = artist * 1_000 + duration;
+    // Strictly greater: equal values keep the search's order, as sortedByDescending does.
+    if (!winner || value > winner.value) winner = { candidate, value };
+  }
+  return winner?.candidate ?? null;
+}
+
 export function ranked<T extends MatchCandidate>(candidates: T[], target: MatchTarget): T[] {
   const scored = candidates.flatMap((candidate) => {
     const value = score(candidate, target);

@@ -110,6 +110,38 @@ describe('search', () => {
   });
 });
 
+describe('search balance', () => {
+  // "simrayo": a song Gauley Bhai released on YouTube Music only as its
+  // music video (OMV, twice), around fan uploads (UGC: a TV performance,
+  // covers, live sets) and unrelated songs that merely start with "sim".
+  const simrayo = () => mapSearch(new YTMusic.Search(response('search-simrayo'), actions, { is_filtered: false } as never), 'simrayo');
+
+  it('reads which kind of video each row is', () => {
+    const results = simrayo();
+    expect(results.top[0]).toMatchObject({ title: 'Simrayo', kind: 'video', videoType: 'official' });
+    expect(results.videos.find((v) => v.title.includes('Kappa TV'))?.videoType).toBe('fan');
+    expect(results.songs.every((s) => s.videoType === 'song')).toBe(true);
+  });
+
+  it("puts the artist's own videos of a song-less release in Top Results, and no fan uploads", () => {
+    const top = simrayo().top;
+    expect(top.filter((t) => t.title === 'Simrayo' && t.videoType === 'official')).toHaveLength(2);
+    expect(top.some((t) => t.videoType === 'fan')).toBe(false);
+    expect(top.length).toBeLessThanOrEqual(6);
+  });
+
+  it('lists official videos before fan uploads in the Videos shelf', () => {
+    const types = simrayo().videos.map((v) => v.videoType);
+    expect(types.indexOf('fan')).toBeGreaterThan(-1);
+    expect(types.lastIndexOf('official')).toBeLessThan(types.indexOf('fan'));
+  });
+
+  it('lets fan uploads into Top Results when the query asks for a take', () => {
+    const results = mapSearch(new YTMusic.Search(response('search-simrayo'), actions, { is_filtered: false } as never), 'simrayo live');
+    expect(results.top.some((t) => t.videoType === 'fan')).toBe(true);
+  });
+});
+
 describe('suggestions', () => {
   it('splits completions into typed and remaining parts', async () => {
     // As YouTube.js's getSearchSuggestions reads them.

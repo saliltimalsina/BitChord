@@ -156,25 +156,48 @@ object SpotifyImporter {
         }
 
     /**
-     * The YouTube Music song that is [track], or null if there is none: the
-     * best candidate by title, artist, length and album, and failing that the
-     * search's first hit.
+     * The YouTube Music version of [track], or null if it has none:
+     *
+     * 1. the catalogue song the matcher accepts (title, credit, length, album);
+     * 2. failing that, the artist's own video of it ([officialVideo]);
+     * 3. failing that, nothing. The search's first hit used to stand in, and
+     *    for a track YouTube Music lacks that hit is whatever else the artist
+     *    made — a "This Is" playlist came back as one song over and over.
      */
     suspend fun matchTrack(track: SpotifyTrack): Song? {
         val query = listOf(track.title, track.artist).filter { it.isNotBlank() }.joinToString(" ")
-        val candidates = YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
+        val target = TrackMatcher.Target(
+            title = track.title,
+            artist = track.artist,
+            durationSec = track.durationMs.takeIf { it > 0 }?.div(1000),
+            album = track.album,
+        )
+        return TrackMatcher.best(songCandidates(query), target) ?: officialVideo(query, target)
+    }
+
+    private suspend fun songCandidates(query: String): List<Song> =
+        YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
             ?.filterIsInstance<SearchResult.Track>()
             ?.map { it.song }
             .orEmpty()
-        return TrackMatcher.best(
-            candidates,
-            TrackMatcher.Target(
-                title = track.title,
-                artist = track.artist,
-                durationSec = track.durationMs.takeIf { it > 0 }?.div(1000),
-                album = track.album,
-            ),
-        ) ?: candidates.firstOrNull()
+
+    /**
+     * The artist's own music video of [target]: plenty of releases are on
+     * YouTube Music only as their video. Never a fan upload, which
+     * is a cover or a live set rather than this recording. Matched as a video:
+     * no album, and a runtime that carries the video's intro and outro.
+     */
+    private suspend fun officialVideo(query: String, target: TrackMatcher.Target): Song? {
+        val videos = YtMusicRepository.search(query, SearchFilter.VIDEOS).getOrNull()
+            ?.filterIsInstance<SearchResult.Track>()
+            ?.map { it.song }
+            ?.filter { it.isVideo && !it.isFanUpload }
+            .orEmpty()
+        // A music video can run minutes past the song (a cinematic intro), so
+        // the artist's own video under the exact title is accepted however
+        // long it runs, as the player's own song/video switch does.
+        return TrackMatcher.best(videos, target.copy(album = null, isVideo = true))
+            ?: TrackMatcher.bestOfficialAudioForVideo(videos, target.copy(album = null))
     }
 
     /** Tracks the embed page lists before it cuts off. */
@@ -265,14 +288,14 @@ object SpotifyImporter {
                         "${track.title} ${track.artist}".trim()
                     }
 
-                    val searchResult = YtMusicRepository.search(query, SearchFilter.SONGS).getOrNull()
-                    val candidates = searchResult?.filterIsInstance<SearchResult.Track>()?.map { it.song }.orEmpty()
+                    val candidates = songCandidates(query)
 
                     val target = TrackMatcher.Target(
                         title = track.title,
                         artist = track.artist,
                     )
-                    val bestMatch = TrackMatcher.best(candidates, target) ?: candidates.firstOrNull()
+                    // No first-hit fallback: see matchTrack.
+                    val bestMatch = TrackMatcher.best(candidates, target)
 
                     val matchedSong = if (cleanLang != null && candidates.isNotEmpty()) {
                         val conflictingLangs = knownLanguages.filter { !it.equals(cleanLang, ignoreCase = true) }
@@ -284,12 +307,10 @@ object SpotifyImporter {
                                 meta.contains("${it.lowercase()} song")
                             }
                         }
-                        TrackMatcher.best(nonConflictingCandidates, target)
-                            ?: nonConflictingCandidates.firstOrNull()
-                            ?: bestMatch
+                        TrackMatcher.best(nonConflictingCandidates, target) ?: bestMatch
                     } else {
                         bestMatch
-                    }
+                    } ?: officialVideo("${track.title} ${track.artist}".trim(), target)
 
                     val done = completedCount.incrementAndGet()
                     onProgress(done, total)

@@ -155,6 +155,13 @@ data class Song(
      * non-history rows (e.g. search results, library).
      */
     val feedbackToken: String? = null,
+    /**
+     * A video somebody other than the artist uploaded (YouTube's UGC type):
+     * a cover, a live set, a TV performance. Kept out of the All tab's mix and
+     * never taken as another catalogue's track. False for the artist's own
+     * video (OMV) and for songs, and wherever the row didn't say.
+     */
+    val isFanUpload: Boolean = false,
 ) {
     /** Legacy derived property: true if and only if [queueTier] is [QueueTier.AUTOPLAY]. */
     val fromAutoplay: Boolean get() = queueTier == QueueTier.AUTOPLAY

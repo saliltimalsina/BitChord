@@ -17,7 +17,9 @@ import type {
   ShelfLayout,
   Suggestions,
   Track,
+  VideoType,
 } from './types';
+import { matches } from '@/data/match/trackMatcher';
 
 // YouTube.js node → view model. Every function tolerates missing fields: a
 // node YouTube stops sending becomes an empty value, never a thrown error,
@@ -61,6 +63,43 @@ function linkOf(endpoint: unknown): BrowseLink | null {
 
 function artistsOf(list: { name: string; channel_id?: string | undefined }[] | undefined): ArtistRef[] {
   return (list ?? []).filter((a) => a.name).map((a) => ({ name: a.name, id: a.channel_id ?? null }));
+}
+
+const VIDEO_TYPES: Record<string, VideoType> = {
+  MUSIC_VIDEO_TYPE_ATV: 'song',
+  MUSIC_VIDEO_TYPE_OMV: 'official',
+  MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC: 'official',
+  MUSIC_VIDEO_TYPE_UGC: 'fan',
+};
+/** Not where a row's own play endpoint is; a card's `contents` are other rows. */
+const NOT_THE_ROW = new Set(['thumbnail', 'thumbnails', 'contents', 'menu', 'badges', 'subtitle_badges']);
+
+/**
+ * The row's musicVideoType, read from whichever of its watch endpoints
+ * YouTube.js kept (the title run's, the play button's), or null.
+ */
+export function videoTypeOf(node: unknown): VideoType | null {
+  const seen = new Set<object>();
+  const visit = (value: unknown, depth: number): string | undefined => {
+    if (!value || typeof value !== 'object' || depth > 10 || seen.has(value)) return undefined;
+    seen.add(value);
+    const record = value as Record<string, unknown>;
+    if (typeof record.musicVideoType === 'string') return record.musicVideoType;
+    for (const [key, child] of Object.entries(record)) {
+      if (NOT_THE_ROW.has(key)) continue;
+      const found = visit(child, depth + 1);
+      if (found) return found;
+    }
+    return undefined;
+  };
+  const raw = visit(node, 0);
+  return raw ? (VIDEO_TYPES[raw] ?? null) : null;
+}
+
+/** `{ videoType }` when the row states one, so rows that don't keep their old shape. */
+function videoTypeField(node: unknown): { videoType?: VideoType } {
+  const type = videoTypeOf(node);
+  return type ? { videoType: type } : {};
 }
 
 function kindOf(itemType: string | undefined, id: string | undefined): ItemKind {
@@ -117,6 +156,7 @@ export function mapResponsiveItem(node: YTNodes.MusicResponsiveListItem): MusicI
     wide: kind === 'video' || isWide(node),
     durationSec: node.duration?.seconds ?? null,
     explicit: explicitOf(node.badges),
+    ...(kind === 'song' || kind === 'video' ? videoTypeField(node) : {}),
   };
 }
 
@@ -198,6 +238,7 @@ export function mapTrack(node: unknown): Track | null {
     thumbnail: thumbnailOf(n),
     index: Number.isFinite(index) ? index : null,
     plays: plays ?? n.views ?? null,
+    ...videoTypeField(n),
   };
 }
 
@@ -331,12 +372,25 @@ export function mapArtist(id: string, artist: Pick<YTMusic.Artist, 'header' | 's
  * sections of every kind, interleaved. Apple groups results by kind, so they
  * are grouped here, in the order YouTube ranked them.
  */
-export function mapSearch(search: { contents?: readonly unknown[] | null }): SearchResults {
+/** How many of YouTube's own leading rows Top Results keeps, in its order, after the card. */
+const LEADING_ROWS = 3;
+const TOP_RESULTS = 6;
+/** Videos in Top Results, the card included: the rest wait in the Videos shelf. */
+const TOP_VIDEOS = 2;
+/** A query that asks for a particular take, which is what fan uploads mostly are. */
+const ASKS_FOR_A_TAKE = /\b(live|cover|covers|remix|acoustic|unplugged|karaoke|instrumental|session|concert|lofi|slowed|reverb)\b/i;
+
+const creditOf = (item: MusicItem) => item.artists.map((a) => a.name).join(', ');
+
+export function mapSearch(search: { contents?: readonly unknown[] | null }, query = ''): SearchResults {
   const results: SearchResults = { top: [], songs: [], artists: [], albums: [], playlists: [], videos: [] };
   const seen = new Set<string>();
+  /** Every result in the order YouTube ranked it. */
+  const ranked: MusicItem[] = [];
   const add = (item: MusicItem | null) => {
     if (!item || seen.has(item.id)) return;
     seen.add(item.id);
+    ranked.push(item);
     const bucket =
       item.kind === 'song' ? results.songs
       : item.kind === 'artist' ? results.artists
@@ -367,6 +421,7 @@ export function mapSearch(search: { contents?: readonly unknown[] | null }): Sea
           wide: false,
           durationSec: null,
           explicit: explicitOf(card.subtitle_badges),
+          ...(videoId ? videoTypeField({ on_tap: card.on_tap, title: card.title, buttons: card.buttons }) : {}),
         };
         results.top.push(item);
         add(item);
@@ -377,11 +432,42 @@ export function mapSearch(search: { contents?: readonly unknown[] | null }): Sea
     for (const node of ((section.contents as unknown[] | undefined) ?? [])) add(mapItem(node));
   }
 
-  // Apple's Top Results: the card, then the leading result of each kind.
-  for (const group of [results.songs, results.albums, results.artists, results.playlists]) {
-    const first = group.find((i) => !results.top.some((t) => t.id === i.id));
-    if (first && results.top.length < 6) results.top.push(first);
+  // Top Results. A video earns a place only when it is the artist's own and
+  // the page has no song that is the same track: then it is the release
+  // (a song put out only as a video), not a second copy of one. Fan uploads
+  // (covers, live sets, TV performances) wait in the Videos shelf unless the
+  // query asks for a take.
+  const wantsTakes = ASKS_FOR_A_TAKE.test(query);
+  const isSongTwice = (video: MusicItem) =>
+    results.songs.some((song) => matches({ title: video.title, artist: creditOf(video), durationSec: null, album: null }, song.title, creditOf(song)));
+  const belongsOnTop = (item: MusicItem) =>
+    item.kind !== 'unknown' &&
+    (item.kind !== 'video' || ((item.videoType !== 'fan' || wantsTakes) && !isSongTwice(item)));
+  let videos = results.top.filter((t) => t.kind === 'video').length;
+  const promote = (item: MusicItem | undefined) => {
+    if (!item || results.top.length >= TOP_RESULTS || results.top.some((t) => t.id === item.id)) return;
+    if (item.kind === 'video') {
+      if (videos >= TOP_VIDEOS) return;
+      videos++;
+    }
+    results.top.push(item);
+  };
+
+  // YouTube's own leading rows first, in its order: its ranking already knows
+  // when a title is out only as a video, rather than the first song that
+  // shares a few letters with the query.
+  const leading = Math.min(TOP_RESULTS, results.top.length + LEADING_ROWS);
+  for (const item of ranked) {
+    if (results.top.length >= leading) break;
+    if (belongsOnTop(item)) promote(item);
   }
+  // Then, Apple-style, the leading result of each kind not yet there.
+  for (const group of [results.songs, results.albums, results.artists, results.playlists]) {
+    promote(group.find((i) => !results.top.some((t) => t.id === i.id)));
+  }
+
+  // The Videos shelf: the artists' own videos before anybody's uploads.
+  results.videos = [...results.videos.filter((v) => v.videoType !== 'fan'), ...results.videos.filter((v) => v.videoType === 'fan')];
   return results;
 }
 

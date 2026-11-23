@@ -12,7 +12,11 @@ export const RECENTS_LIMIT = 8;
 function load(): RecentItem[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
-    return Array.isArray(parsed) ? (parsed as RecentItem[]).slice(0, RECENTS_LIMIT) : [];
+    if (!Array.isArray(parsed)) return [];
+    // Played videos used to be remembered as "Song • …".
+    return (parsed as RecentItem[])
+      .slice(0, RECENTS_LIMIT)
+      .map((r) => (r.kind === 'video' && r.subtitle?.startsWith('Song') ? { ...r, subtitle: r.subtitle.replace(/^Song/, 'Video') } : r));
   } catch {
     return [];
   }

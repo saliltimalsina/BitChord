@@ -61,7 +61,8 @@ function asMusicItem(item: RecentItem): MusicItem {
 
 function rememberSong(item: RecentItem) {
   const artists = item.artists?.map((a) => a.name).join(', ');
-  useRecents.getState().remember({ ...item, subtitle: ['Song', artists].filter(Boolean).join(' • ') });
+  const kind = item.kind === 'video' ? 'Video' : 'Song';
+  useRecents.getState().remember({ ...item, subtitle: [kind, artists].filter(Boolean).join(' • ') });
 }
 
 /** ⌘Enter: the song, or every song of the list, onto the end of the queue; the palette stays open for more. */

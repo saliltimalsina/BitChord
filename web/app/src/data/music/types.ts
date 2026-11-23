@@ -19,6 +19,13 @@ export interface AlbumRef {
 }
 
 /** Anything a shelf, grid or search result can hold. */
+/**
+ * What YouTube Music says a playable row is (its musicVideoType): the
+ * catalogue song (ATV), the artist's official video (OMV), or anybody's upload
+ * (UGC: covers, live sets, TV performances).
+ */
+export type VideoType = 'song' | 'official' | 'fan';
+
 export interface MusicItem {
   kind: ItemKind;
   /** videoId for songs and videos; browse id for albums (MPREb_), playlists (VL…) and artists (UC…). */
@@ -34,6 +41,8 @@ export interface MusicItem {
   wide: boolean;
   durationSec: number | null;
   explicit: boolean;
+  /** Songs and videos only, where the row says. */
+  videoType?: VideoType;
 }
 
 /** How a shelf lays out (report §2 shelf types). */
@@ -72,6 +81,10 @@ export interface Track {
    * Music version yet: still being looked for, or not found. Shown, never played.
    */
   unavailable?: 'matching' | 'missing';
+  /** Where the row says: a song, or which kind of video. */
+  videoType?: VideoType;
+  /** Another catalogue's song that YouTube Music has only as this music video. */
+  matchedVideo?: boolean;
 }
 
 export interface HeaderInfo {

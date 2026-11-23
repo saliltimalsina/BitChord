@@ -1,6 +1,6 @@
 import type { SpotifyPlaylist, SpotifyTrack } from '@bitchord/shared/bridge';
-import { best, type MatchCandidate } from '@/data/match/trackMatcher';
-import { searchSongs } from '@/data/music/api';
+import { best, bestOfficialAudioForVideo, type MatchCandidate } from '@/data/match/trackMatcher';
+import { searchSongs, searchVideos } from '@/data/music/api';
 import type { MusicItem, Track } from '@/data/music/types';
 import { getBridge } from '@/extension/bridge';
 
@@ -104,23 +104,46 @@ export function candidateOf(track: Track): MatchCandidate {
 const matched = new Map<string, Track | null>();
 
 /**
- * The YouTube Music song that is [track], or null if there is none:
- * the best candidate by title, artist, length and album, and failing that
- * the search's first hit (SpotifyImporter.matchTrack).
+ * The YouTube Music version of [track], or null if it has none (SpotifyImporter.matchTrack):
+ *
+ * 1. the catalogue song the matcher accepts (title, credit, length, album);
+ * 2. failing that, the artist's own video of it: plenty of releases are on
+ *    YouTube Music only as their music video. Never a fan upload,
+ *    which is a cover or a live set rather than this recording;
+ * 3. failing that, nothing. Taking the search's first hit instead is what
+ *    filled a playlist with copies of the artist's most popular song: the
+ *    first hit for a track YouTube doesn't have is whatever else they made.
  */
 export async function matchToYouTube(track: SpotifyTrack): Promise<Track | null> {
   if (matched.has(track.id)) return matched.get(track.id)!;
   const query = [track.title, track.artist].filter((s) => s.trim()).join(' ');
-  const candidates = await searchSongs(query);
   const target = {
     title: track.title,
     artist: track.artist,
     durationSec: track.durationMs > 0 ? Math.round(track.durationMs / 1000) : null,
     album: track.album,
   };
-  const scored = best(candidates.map((c) => ({ ...candidateOf(c), track: c })), target);
-  const found = scored?.track ?? candidates[0] ?? null;
+  const pick = (candidates: Track[], isVideo: boolean) =>
+    best(
+      candidates.map((c) => ({ ...candidateOf(c), track: c })),
+      // A video belongs to no album, and its runtime carries the video's intro and outro.
+      isVideo ? { ...target, album: null, isVideo: true } : target,
+    )?.track ?? null;
+
+  let found = pick(await searchSongs(query), false);
+  if (!found) {
+    const videos = (await searchVideos(query)).filter((v) => v.videoType !== 'fan');
+    // A music video can run minutes past the song it carries (a cinematic
+    // intro, an outro). The artist's own video under the exact title is that
+    // song however long it runs.
+    const video =
+      pick(videos, true) ??
+      bestOfficialAudioForVideo(videos.map((c) => ({ ...candidateOf(c), track: c })), { ...target, album: null })?.track ??
+      null;
+    found = video && { ...video, matchedVideo: true };
+  }
   const result = found && { ...found, thumbnail: found.thumbnail ?? track.imageUrl };
+  // Only an answered search is remembered; a thrown one is retried next time.
   matched.set(track.id, result);
   return result;
 }

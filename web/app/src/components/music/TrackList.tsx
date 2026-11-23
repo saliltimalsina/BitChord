@@ -249,6 +249,14 @@ function Row({ track, variant, position, fallbackArtwork, onPlayRow, onRemove, d
           <div className="flex min-w-0 items-center">
             <span className="truncate type-body text-primary">{track.title}</span>
             {track.explicit && <ExplicitBadge />}
+            {track.matchedVideo && (
+              <span
+                className="ms-1.5 shrink-0 rounded-[3px] border border-current px-1 text-[10px] leading-[14px] font-medium text-secondary uppercase"
+                title="YouTube Music has this only as its music video"
+              >
+                Video
+              </span>
+            )}
           </div>
           {variant === 'album' && track.artists.length > 0 && (
             <div className="truncate type-callout">

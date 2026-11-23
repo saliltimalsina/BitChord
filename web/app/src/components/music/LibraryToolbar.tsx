@@ -53,6 +53,7 @@ export function LibraryToolbar({
   onQuery,
   prefs,
   onPrefs,
+  layouts = true,
 }: {
   /** "playlists", "albums": for the field's placeholder. */
   what: string;
@@ -60,6 +61,8 @@ export function LibraryToolbar({
   onQuery: (query: string) => void;
   prefs: Prefs;
   onPrefs: (change: Partial<Prefs>) => void;
+  /** Offer grid or list; a page with only a grid leaves it out. */
+  layouts?: boolean;
 }) {
   return (
     <div className="mx-(--body-gutter) mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -92,14 +95,16 @@ export function LibraryToolbar({
       <div className="flex items-center gap-2">
         <span className="type-callout text-secondary">Sort by</span>
         <Select value={prefs.sort} options={LIBRARY_SORTS} onChange={(sort) => onPrefs({ sort })} label="Sort by" />
-        <div className="ms-1 flex gap-0.5" role="group" aria-label="Layout">
-          <button className={toggle} aria-label="Grid" aria-pressed={prefs.layout === 'grid'} onClick={() => onPrefs({ layout: 'grid' })}>
-            <LayoutGrid size={16} strokeWidth={2.2} />
-          </button>
-          <button className={toggle} aria-label="List" aria-pressed={prefs.layout === 'list'} onClick={() => onPrefs({ layout: 'list' })}>
-            <List size={16} strokeWidth={2.2} />
-          </button>
-        </div>
+        {layouts && (
+          <div className="ms-1 flex gap-0.5" role="group" aria-label="Layout">
+            <button className={toggle} aria-label="Grid" aria-pressed={prefs.layout === 'grid'} onClick={() => onPrefs({ layout: 'grid' })}>
+              <LayoutGrid size={16} strokeWidth={2.2} />
+            </button>
+            <button className={toggle} aria-label="List" aria-pressed={prefs.layout === 'list'} onClick={() => onPrefs({ layout: 'list' })}>
+              <List size={16} strokeWidth={2.2} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

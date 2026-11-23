@@ -131,11 +131,26 @@ export function TrackShelf({ title, to, tracks, source }: { title: string; to?: 
   );
 }
 
-/** A shelf of the app's own (the library, Spotify), titled with a link to its page. */
-export function ItemShelf({ title, to, items }: { title: string; to: string; items: MusicItem[] }) {
+/**
+ * A shelf of the app's own (the library, Spotify), titled with a link to its
+ * page; [viewAll] also puts "View all" at the row's far end, as a library's
+ * section rows have it.
+ */
+export function ItemShelf({ title, to, items, viewAll = false }: { title: string; to: string; items: MusicItem[]; viewAll?: boolean }) {
   return (
     <section className={shelfSection} aria-label={title}>
-      <ShelfTitle title={title} to={to} />
+      {viewAll ? (
+        <div className={`${shelfHeader} flex items-baseline justify-between gap-4`}>
+          <h2 className="type-title-2-emphasized">
+            <PrefetchLink to={to}>{title}</PrefetchLink>
+          </h2>
+          <PrefetchLink to={to} className="shrink-0 type-body text-secondary hover:text-primary">
+            View all
+          </PrefetchLink>
+        </div>
+      ) : (
+        <ShelfTitle title={title} to={to} />
+      )}
       <ShelfScroller key={items.length} kind="square">
         {items.map((item, i) => (
           <li key={`${item.id}-${i}`}>

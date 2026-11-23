@@ -2201,6 +2201,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val saved = albums.await()
         val fromSpotify = spotifyPlaylists.await()
         if (!stillCurrent() || identity != listenerKey()) return@coroutineScope
+        publishSpotifyLibrary(fromSpotify, spotifyConnected)
         if (playlists.isNotEmpty()) _playlists.value = playlists
         if (saved.isNotEmpty()) _savedAlbums.value = saved
 
@@ -2278,6 +2279,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /**
+     * Every playlist in the connected Spotify account, as cards that open
+     * BitChord's Spotify page: the Library's Spotify row and its Show all.
+     * Empty while Spotify isn't connected.
+     */
+    private val _spotifyLibrary = MutableStateFlow<List<ShelfItem>>(emptyList())
+    val spotifyLibrary: StateFlow<List<ShelfItem>> = _spotifyLibrary.asStateFlow()
+
+    private fun publishSpotifyLibrary(playlists: List<com.music.bitchord.data.spotify.SpotifyPlaylist>, connected: Boolean) {
+        if (!connected) {
+            _spotifyLibrary.value = emptyList()
+            return
+        }
+        // A failed read leaves the last good row up rather than emptying it.
+        if (playlists.isEmpty()) return
+        _spotifyLibrary.value = playlists.map { playlist ->
+            ShelfItem(
+                title = playlist.name,
+                subtitle = playlist.owner ?: text(R.string.spotify),
+                thumbnailUrl = playlist.imageUrl,
+                videoId = null,
+                browseId = SPOTIFY_PAGE_PREFIX + playlist.id,
+            )
+        }
+    }
+
+    /** The Library's Spotify row, read on its own when Home hasn't read it yet. */
+    private fun loadSpotifyLibrary() {
+        val connected = AppSettings.spotifySpdcToken.value.isNotBlank()
+        if (!connected) {
+            _spotifyLibrary.value = emptyList()
+            return
+        }
+        viewModelScope.launch {
+            val playlists = runCatching { SpotifyLibrary.playlists() }.getOrDefault(emptyList())
+            publishSpotifyLibrary(playlists, connected = true)
+        }
+    }
+
     /** Library albums kept for Your albums' Show all, which lists them all. */
     private val _savedAlbums = MutableStateFlow<List<ShelfItem>>(emptyList())
     val savedAlbums: StateFlow<List<ShelfItem>> = _savedAlbums.asStateFlow()
@@ -2337,6 +2377,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun loadLibrary() {
+        loadSpotifyLibrary()
         if (!_signedIn.value) return
         val identity = listenerKey()
         _library.value = UiState.Loading

@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { PageHeader } from '@/components/PageHeader';
+import { LibraryToolbar, useLibraryPrefs } from '@/components/music/LibraryToolbar';
+import { filterItems, sortItems } from '@/data/music/libraryView';
 import { SquareLockup } from '@/components/music/Lockups';
 import { EmptyState, LoadError, NeedsExtension, stateStyles } from '@/components/music/States';
 import type { MusicItem } from '@/data/music/types';
@@ -20,6 +23,8 @@ export default function SpotifyPage() {
   const playlists = useSpotifyPlaylists();
   const connect = useSetSpotifyConnected();
   const retry = useRefreshSpotifyAuth();
+  const [query, setQuery] = useState('');
+  const [prefs, setPrefs] = useLibraryPrefs('spotify');
 
   if (extension.state === 'missing') return <NeedsExtension what="your Spotify playlists" />;
   if (auth.state === 'checking') return <PlainSkeleton />;
@@ -60,11 +65,16 @@ export default function SpotifyPage() {
   if (playlists.isError && !playlists.data) return <LoadError error={playlists.error} onRetry={() => void playlists.refetch()} />;
   if (!playlists.data) return <PlainSkeleton />;
 
-  const items: MusicItem[] = playlists.data.map(spotifyPlaylistItem);
+  const all: MusicItem[] = playlists.data.map(spotifyPlaylistItem);
+  const items = filterItems(sortItems(all, prefs.sort), query);
   return (
     <>
       <PageHeader title="Spotify" />
-      {!items.length && <EmptyState title="No playlists yet" />}
+      {all.length > 0 && <LibraryToolbar what="Spotify playlists" query={query} onQuery={setQuery} prefs={prefs} onPrefs={setPrefs} layouts={false} />}
+      {!all.length && <EmptyState title="No playlists yet" />}
+      {query.trim() && all.length > 0 && !items.length && (
+        <p className="py-10 text-center type-body text-secondary">Nothing matches “{query.trim()}”.</p>
+      )}
       <ul className={seeAllGrid}>
         {items.map((item) => (
           <li key={item.id}>

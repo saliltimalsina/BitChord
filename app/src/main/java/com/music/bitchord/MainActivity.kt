@@ -1074,6 +1074,7 @@ private fun BitChordApp(
     // Playlists imported without (or instead of) a YouTube Music account live
     // in the app's own store, and sit on the same shelf as the downloaded ones.
     val localPlaylists by com.music.bitchord.data.spotify.LocalPlaylistStore.playlists.collectAsStateWithLifecycle()
+    val spotifyLibrary by viewModel.spotifyLibrary.collectAsStateWithLifecycle()
     val localPlaylistItems = localPlaylists.map { playlist ->
         ShelfItem(
             title = playlist.title,
@@ -3994,8 +3995,13 @@ private fun BitChordApp(
                                 onRefresh = { viewModel.refresh(MainViewModel.Feed.LIBRARY) },
                                 pullState = libraryPull,
                                 contentPadding = listPadding,
-                                links = libraryLinks(),
+                                // With its playlists in a row of their own, Spotify
+                                // needs no line in the folder list as well.
+                                links = libraryLinks().filterNot {
+                                    spotifyLibrary.isNotEmpty() && it.item.browseId == SPOTIFY_BROWSE_ID
+                                },
                                 deviceItems = libraryDeviceItems(downloadedReleases) + localPlaylistItems,
+                                spotifyShelf = HomeShelf(title = stringResource(R.string.spotify), items = spotifyLibrary),
                             )
                         }
                     }

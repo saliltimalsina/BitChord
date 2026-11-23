@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import com.music.bitchord.ui.components.ShelfRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -121,6 +122,12 @@ fun LibraryScreen(
      * whole. Left off the page entirely while there are none.
      */
     deviceItems: List<ShelfItem>,
+    /**
+     * The connected Spotify account's playlists as a row under On Device, with
+     * Show all whatever its length: the way into them that a card row gives
+     * rather than one more line in the folder list. Null or empty: no row.
+     */
+    spotifyShelf: HomeShelf? = null,
     /** The big "Library" heading; the desktop's pages carry none. */
     showTitle: Boolean = true,
 ) {
@@ -179,6 +186,20 @@ fun LibraryScreen(
                         onItemClick = onShelfItemClick,
                         onItemLongPress = onShelfItemLongPress,
                         onShowAll = { onShowAll(onDeviceShelf) },
+                        alwaysShowAll = true,
+                    )
+                }
+            }
+            val spotifyMatches = spotifyShelf?.matching()
+            if (spotifyMatches != null && spotifyMatches.items.isNotEmpty()) {
+                item(key = "shelf:spotify") {
+                    LibraryGridShelf(
+                        shelf = spotifyMatches,
+                        onItemClick = onShelfItemClick,
+                        onItemLongPress = onShelfItemLongPress,
+                        // Show all opens the whole list, not just what matched.
+                        onShowAll = { onShowAll(spotifyShelf) },
+                        alwaysShowAll = true,
                     )
                 }
             }
@@ -215,7 +236,9 @@ fun LibraryScreen(
                     // for the tile that creates the first playlist.
                     val shelves = state.data.shelves.map { it.matching() }
                         .filter { !searching || it.items.isNotEmpty() }
-                    if (searching && shelves.isEmpty() && deviceMatches.items.isEmpty()) {
+                    if (searching && shelves.isEmpty() && deviceMatches.items.isEmpty() &&
+                        spotifyMatches?.items.isNullOrEmpty()
+                    ) {
                         item(key = "no-matches") {
                             MessageState(stringResource(Res.string.library_no_matches, query.trim()))
                         }
@@ -400,6 +423,8 @@ internal fun LibraryGridShelf(
     leadingCard: (@Composable () -> Unit)? = null,
     trailingCard: (@Composable () -> Unit)? = null,
     pinnedPlaylists: List<String> = emptyList(),
+    /** Show all even when every card fits in the row (a section's way to its own page). */
+    alwaysShowAll: Boolean = false,
 ) {
     val extraCount = (if (leadingCard != null) 1 else 0) + (if (trailingCard != null) 1 else 0)
     val visibleItems = shelf.items.take((LIBRARY_ROW_MAX_ITEMS - extraCount).coerceAtLeast(0))
@@ -408,7 +433,9 @@ internal fun LibraryGridShelf(
         SectionHeader(
             title = shelf.title,
             subtitle = shelf.subtitle,
-            onShowAll = onShowAll.takeIf { shelf.items.size + extraCount > LIBRARY_ROW_MAX_ITEMS },
+            onShowAll = onShowAll.takeIf {
+                (alwaysShowAll && shelf.items.isNotEmpty()) || shelf.items.size + extraCount > LIBRARY_ROW_MAX_ITEMS
+            },
         )
         ShelfRow(
             contentPadding = PaddingValues(horizontal = PAGE_GUTTER),
@@ -469,7 +496,12 @@ fun LibraryGridPage(
     // Pinning wins over the default order, but an explicit sort is a stronger,
     // more deliberate signal than a pin and is left to reorder the whole grid,
     // pinned cards included.
-    val sortedShelf = shelf.pinnedFirst(pinnedPlaylists).sortedForLibrary(librarySort)
+    // Search this page: narrows the grid to the cards whose name (or owner)
+    // holds each word typed, as the Library's own search does for its rows.
+    var query by rememberSaveable(shelf.title) { mutableStateOf("") }
+    val sortedShelf = shelf.pinnedFirst(pinnedPlaylists).sortedForLibrary(librarySort).let { sorted ->
+        if (query.isBlank()) sorted else sorted.copy(items = filterPlaylists(sorted.items, query) { "${it.title} ${it.subtitle}" })
+    }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val grid = libraryGrid(maxWidth - PAGE_GUTTER * 2)
         LazyVerticalGrid(
@@ -480,7 +512,21 @@ fun LibraryGridPage(
             verticalArrangement = Arrangement.spacedBy(20.dp),
             modifier = Modifier.padding(horizontal = PAGE_GUTTER),
         ) {
-            if (onNewPlaylist != null) {
+            item(key = "search", span = { GridItemSpan(maxLineSpan) }) {
+                SearchField(
+                    query = query,
+                    onQueryChange = { query = it },
+                    onSubmit = {},
+                    placeholder = stringResource(Res.string.library_search_hint),
+                    modifier = Modifier.padding(vertical = 8.dp),
+                )
+            }
+            if (query.isNotBlank() && sortedShelf.items.isEmpty()) {
+                item(key = "no-matches", span = { GridItemSpan(maxLineSpan) }) {
+                    MessageState(stringResource(Res.string.library_no_matches, query.trim()))
+                }
+            }
+            if (onNewPlaylist != null && query.isBlank()) {
                 item(key = "leading") {
                     NewShelfCard(
                         icon = BitChordIcons.Plus,

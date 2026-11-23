@@ -162,7 +162,11 @@ function LibraryNav({ onNavigate }: { onNavigate: () => void }) {
   const addable = usePlaylistOptions(dragged, dragged !== '');
   return (
     <>
-      <h2 className={sectionHeader}>Library</h2>
+      <h2 className={sectionHeader}>
+        <PrefetchNavLink to="/library" end className="hover:text-primary" onClick={onNavigate}>
+          Library
+        </PrefetchNavLink>
+      </h2>
       <NavList items={LIBRARY} onNavigate={onNavigate} />
       <h2 className={sectionHeader}>Playlists</h2>
       <ul className={list}>

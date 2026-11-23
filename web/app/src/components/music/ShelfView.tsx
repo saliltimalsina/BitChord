@@ -4,7 +4,8 @@ import { PrefetchLink } from '@/components/PrefetchLink';
 import { shelfHeader, shelfKinds, shelfList, shelfSection, type ShelfKind } from '@/components/shelf';
 import type { MusicItem, Shelf, Track } from '@/data/music/types';
 import type { QueueSource } from '@/playback/queue/timeline';
-import { browseHref } from './links';
+import { useNavigate } from 'react-router';
+import { browseHref, hrefFor } from './links';
 import { CircleLockup, SquareLockup, TrackLockup, VideoLockup } from './Lockups';
 import { playList } from './play';
 
@@ -124,6 +125,26 @@ export function TrackShelf({ title, to, tracks, source }: { title: string; to?: 
         {tracks.map((track, i) => (
           <li key={track.videoId}>
             <TrackLockup item={trackItem(track)} onPlay={() => playList(tracks, i, { source })} plays={track.plays} />
+          </li>
+        ))}
+      </ShelfScroller>
+    </section>
+  );
+}
+
+/**
+ * Playlists and albums in the rows-of-four layout of Recently Played and
+ * Listen again: a tap opens the list rather than playing it.
+ */
+export function CollectionListShelf({ title, items }: { title: string; items: MusicItem[] }) {
+  const navigate = useNavigate();
+  return (
+    <section className={shelfSection} aria-label={title}>
+      <ShelfTitle title={title} />
+      <ShelfScroller key={items.length} kind="tracks">
+        {items.map((item) => (
+          <li key={`${item.kind}:${item.id}`}>
+            <TrackLockup item={item} onPlay={() => void navigate(hrefFor(item) ?? '/library')} />
           </li>
         ))}
       </ShelfScroller>

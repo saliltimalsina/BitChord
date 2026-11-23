@@ -1385,6 +1385,7 @@
     <string name="artist_on_spotify">On Spotify</string>
     <string name="home_your_albums">Your albums</string>
     <string name="home_from_spotify">From Spotify</string>
+    <string name="home_recent_playlists">Recent playlists</string>
     <string name="home_connect_spotify">Connect Spotify</string>
     <string name="home_connect_spotify_subtitle">See your Spotify playlists here</string>
     <string name="edit_playlist">Edit playlist</string>

@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { PageHeader } from '@/components/PageHeader';
-import { ItemShelf, Shelves, TrackShelf } from '@/components/music/ShelfView';
+import { CollectionListShelf, ItemShelf, Shelves, TrackShelf } from '@/components/music/ShelfView';
+import { useRecents } from '@/state/recents';
 import { LoadError, LoadMoreError, NeedsExtension } from '@/components/music/States';
 import { useHome, useLibrary, useLibraryPlaylists, useYouTubeReady } from '@/data/music/queries';
 import type { MusicItem, Track } from '@/data/music/types';
@@ -41,6 +42,18 @@ function useLibraryShelves(): { playlists: MusicItem[]; albums: MusicItem[] } {
 }
 
 /** Spotify, once connected: the daylist first (when Spotify has made one), then the library's playlists. */
+/** Playlists and albums opened lately in this browser, newest first (the palette's history). */
+function useRecentLists(): MusicItem[] {
+  const recents = useRecents((s) => s.items);
+  return useMemo(
+    () =>
+      recents
+        .filter((r) => r.kind === 'playlist' || r.kind === 'album' || r.kind === 'spotify-playlist')
+        .map((r) => ({ artists: [], album: null, durationSec: null, explicit: false, wide: false, ...r })),
+    [recents],
+  );
+}
+
 function useSpotifyShelf(): MusicItem[] {
   const daylist = useSpotifyDaylist();
   const playlists = useSpotifyPlaylists();
@@ -54,6 +67,7 @@ export default function HomePage() {
   const recent = useRecentlyPlayed();
   const library = useLibraryShelves();
   const spotify = useSpotifyShelf();
+  const recentLists = useRecentLists();
   const sentinel = useRef<HTMLDivElement>(null);
 
   // Loads the next shelves before the bottom comes into view; after a failed
@@ -105,6 +119,7 @@ export default function HomePage() {
       {library.playlists.length > 0 && <ItemShelf title="Your Playlists" to="/library/playlists" items={library.playlists} />}
       {library.albums.length > 0 && <ItemShelf title="Your Albums" to="/library/albums" items={library.albums} />}
       {spotify.length > 0 && <ItemShelf title="From Spotify" to="/spotify" items={spotify} />}
+      {recentLists.length > 0 && <CollectionListShelf title="Recent playlists" items={recentLists} />}
       <Shelves shelves={shelves} />
       <div ref={sentinel} />
       {home.isFetchingNextPage && <ShelfSkeleton kind="square" />}

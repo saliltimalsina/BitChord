@@ -48,7 +48,9 @@ import com.music.bitchord.auth.CapturedSession
 import com.music.bitchord.auth.WebSessionMode
 import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.model.AccountChannel
+import com.music.bitchord.data.RecentPlaylists
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.ShelfLayout
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.HomeShelf
 import com.music.bitchord.data.model.withoutRepeatsOf
@@ -1580,6 +1582,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             YtMusicRepository.deletePlaylist(playlist.playlistId).fold(
                 onSuccess = {
+                    RecentPlaylists.forget(playlist.browseId)
                     _playlists.value = _playlists.value
                         .filterNot { it.playlistId == playlist.playlistId }
                     // The card in the library tab, which is the surface the
@@ -1698,6 +1701,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     init {
+        viewModelScope.launch { RecentPlaylists.items.collect { refreshRecentPlaylists() } }
         startSearchPipeline()
         startSuggestPipeline()
         startTypeaheadMediaPipeline()
@@ -2329,15 +2333,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * connect card, once Spotify is connected).
      */
     private fun placeOwnShelves(shelves: List<HomeShelf>) {
+        lastOwnShelves = shelves
         val own = setOf(
             text(R.string.home_your_playlists),
             text(R.string.home_your_albums),
             text(R.string.home_from_spotify),
+            text(R.string.home_recent_playlists),
         )
         val existing = (_home.value as? UiState.Success)?.data.orEmpty()
             .filterNot { it.title in own }
         val after = existing.indexOfFirst { it.title == homeRecentTitle } + 1
-        _home.value = UiState.Success(existing.take(after) + shelves + existing.drop(after))
+        val placed = shelves + listOfNotNull(recentPlaylistsShelf())
+        _home.value = UiState.Success(existing.take(after) + placed + existing.drop(after))
+    }
+
+    /** What [placeOwnShelves] last placed, so Recent playlists can be redrawn on its own. */
+    private var lastOwnShelves: List<HomeShelf> = emptyList()
+
+    /**
+     * Recent playlists: the lists opened lately on this device
+     * ([RecentPlaylists]), in the rows-of-four pager Recents and Listen again
+     * use, right under From Spotify.
+     */
+    private fun recentPlaylistsShelf(): HomeShelf? =
+        RecentPlaylists.items.value.takeIf { it.isNotEmpty() }?.let {
+            HomeShelf(
+                title = text(R.string.home_recent_playlists),
+                items = it,
+                layout = ShelfLayout.LIST,
+                leading = true,
+            )
+        }
+
+    /** Redraws Recent playlists after one was opened, once Home is up. */
+    private fun refreshRecentPlaylists() {
+        if (_home.value !is UiState.Success) return
+        placeOwnShelves(lastOwnShelves)
     }
 
     /** Hides Home's Connect Spotify card for good — its long-press. */
@@ -3204,10 +3235,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } == true
         ) return
         if (browseId.startsWith(SPOTIFY_PAGE_PREFIX)) {
+            RecentPlaylists.remember(browseId, title, subtitle, thumbnailUrl)
             openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
             return
         }
         val resolved = browseTypeOf(browseId, type)
+        // Lists only: an artist page or a device folder isn't a playlist to return to.
+        if ((resolved == BrowseType.PLAYLIST || resolved == BrowseType.ALBUM) && !browseId.startsWith(LocalGroups.PREFIX)) {
+            RecentPlaylists.remember(browseId, title, subtitle, thumbnailUrl)
+        }
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,

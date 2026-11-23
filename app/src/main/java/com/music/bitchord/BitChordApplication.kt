@@ -166,6 +166,7 @@ class BitChordApplication : Application(), SingletonImageLoader.Factory, Configu
         ListenTogether.init(this)
         SearchHistory.init(this)
         LastPlayed.init(this)
+        com.music.bitchord.data.RecentPlaylists.init(this)
         BoundedContextPersistence.init(this)
         com.music.bitchord.playback.PartyPersonalQueueStash.init(this)
         // Which tracks the listener has reverted to YouTube's own upload. Read

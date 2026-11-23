@@ -1660,6 +1660,11 @@ private fun BitChordApp(
         )
         playFrom(songs, index, source)
     }
+    // Recent playlists: the list a song is actually playing out of, once it plays.
+    LaunchedEffect(player.song?.playbackSourceId, player.isPlaying) {
+        val song = player.song ?: return@LaunchedEffect
+        if (player.isPlaying) viewModel.rememberPlayedList(song)
+    }
     LaunchedEffect(player.song?.videoId) {
         if (optimisticVersionSong?.videoId == player.song?.videoId ||
             (optimisticVersionSong != null && player.song?.videoId != convertedAudioId && player.song?.videoId != convertedVideoId && player.song?.videoId != keepVideoId)

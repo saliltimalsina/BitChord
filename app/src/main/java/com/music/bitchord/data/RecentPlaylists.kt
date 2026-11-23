@@ -21,7 +21,8 @@ object RecentPlaylists {
     private data class Entry(val browseId: String, val title: String, val subtitle: String, val thumbnailUrl: String?)
 
     private const val PREFS_NAME = "recent_playlists"
-    private const val KEY = "entries"
+    // "played": the row once counted lists merely opened, under "entries".
+    private const val KEY = "played"
     const val LIMIT = 20
 
     private lateinit var prefs: SharedPreferences

@@ -14,7 +14,7 @@ import { searchQuery, useLibraryPlaylists, useSignedIn, useYouTubeReady } from '
 import type { MusicItem } from '@/data/music/types';
 import { useSpotifyPlaylistSearch, useSpotifyPlaylists } from '@/data/spotify/queries';
 import { usePlayer } from '@/state/player';
-import { RECENTS_LIMIT, useRecents, type RecentItem } from '@/state/recents';
+import { useRecents, type RecentItem } from '@/state/recents';
 import { toast } from '@/state/toasts';
 import { useUi } from '@/state/ui';
 import { flattenResults, localMatches } from './paletteSearch';
@@ -168,8 +168,7 @@ function Palette({ closing }: { closing: boolean }) {
 
   const { ready } = useYouTubeReady();
   const signedIn = useSignedIn();
-  const all = useRecents((s) => s.items);
-  const recents = useMemo(() => all.slice(0, RECENTS_LIMIT), [all]);
+  const recents = useRecents((s) => s.items);
   const library = useLibraryPlaylists();
   const spotify = useSpotifyPlaylists();
   const search = useQuery({ ...searchQuery(query), enabled: ready && query.length > 0, placeholderData: keepPreviousData });

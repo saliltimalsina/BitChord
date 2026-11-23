@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { PageHeader } from '@/components/PageHeader';
 import { CollectionListShelf, ItemShelf, Shelves, TrackShelf } from '@/components/music/ShelfView';
-import { useRecents } from '@/state/recents';
+import { usePlayedLists } from '@/state/playedLists';
 import { LoadError, LoadMoreError, NeedsExtension } from '@/components/music/States';
 import { useHome, useLibrary, useLibraryPlaylists, useYouTubeReady } from '@/data/music/queries';
 import type { MusicItem, Track } from '@/data/music/types';
@@ -42,16 +42,10 @@ function useLibraryShelves(): { playlists: MusicItem[]; albums: MusicItem[] } {
 }
 
 /** Spotify, once connected: the daylist first (when Spotify has made one), then the library's playlists. */
-/** Playlists and albums opened lately in this browser, newest first (the palette's history). */
+/** Playlists and albums played from lately in this browser, newest first (state/playedLists). */
 function useRecentLists(): MusicItem[] {
-  const recents = useRecents((s) => s.items);
-  return useMemo(
-    () =>
-      recents
-        .filter((r) => r.kind === 'playlist' || r.kind === 'album' || r.kind === 'spotify-playlist')
-        .map((r) => ({ artists: [], album: null, durationSec: null, explicit: false, wide: false, ...r })),
-    [recents],
-  );
+  const played = usePlayedLists((s) => s.items);
+  return useMemo(() => played.map((l) => ({ artists: [], album: null, durationSec: null, explicit: false, wide: false, ...l })), [played]);
 }
 
 function useSpotifyShelf(): MusicItem[] {

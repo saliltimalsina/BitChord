@@ -50,6 +50,7 @@ import com.music.bitchord.data.model.Account
 import com.music.bitchord.data.model.AccountChannel
 import com.music.bitchord.data.RecentPlaylists
 import com.music.bitchord.data.model.BrowseType
+import com.music.bitchord.data.model.PlaybackSourceType
 import com.music.bitchord.data.model.ShelfLayout
 import com.music.bitchord.data.model.DetailPage
 import com.music.bitchord.data.model.HomeShelf
@@ -2365,7 +2366,29 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
 
-    /** Redraws Recent playlists after one was opened, once Home is up. */
+    /**
+     * [song] is playing out of a playlist or album: Recent playlists gets that
+     * list. Played, not merely opened. The list's own artwork and byline come
+     * from its page when it is on the stack, else from the row it already has.
+     */
+    fun rememberPlayedList(song: Song) {
+        if (song.playbackSourceType != PlaybackSourceType.BROWSE) return
+        val browseId = song.playbackSourceId ?: return
+        val isList = browseId.startsWith(SPOTIFY_PAGE_PREFIX) ||
+            (browseTypeOf(browseId).let { it == BrowseType.PLAYLIST || it == BrowseType.ALBUM } &&
+                !browseId.startsWith(LocalGroups.PREFIX))
+        if (!isList) return
+        val page = _detailStack.value.lastOrNull { it.browseId == browseId }
+        val known = RecentPlaylists.items.value.firstOrNull { it.browseId == browseId }
+        RecentPlaylists.remember(
+            browseId = browseId,
+            title = page?.title ?: song.playbackSource ?: known?.title ?: return,
+            subtitle = page?.subtitle ?: known?.subtitle.orEmpty(),
+            thumbnailUrl = page?.thumbnailUrl ?: known?.thumbnailUrl ?: song.thumbnailUrl,
+        )
+    }
+
+    /** Redraws Recent playlists after one was played, once Home is up. */
     private fun refreshRecentPlaylists() {
         if (_home.value !is UiState.Success) return
         placeOwnShelves(lastOwnShelves)
@@ -3235,15 +3258,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } == true
         ) return
         if (browseId.startsWith(SPOTIFY_PAGE_PREFIX)) {
-            RecentPlaylists.remember(browseId, title, subtitle, thumbnailUrl)
             openSpotifyPage(browseId, title, subtitle, thumbnailUrl)
             return
         }
         val resolved = browseTypeOf(browseId, type)
-        // Lists only: an artist page or a device folder isn't a playlist to return to.
-        if ((resolved == BrowseType.PLAYLIST || resolved == BrowseType.ALBUM) && !browseId.startsWith(LocalGroups.PREFIX)) {
-            RecentPlaylists.remember(browseId, title, subtitle, thumbnailUrl)
-        }
         _detailStack.value += DetailPage(
             browseId = browseId,
             title = title,
